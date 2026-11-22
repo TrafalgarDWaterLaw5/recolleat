@@ -5,6 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <title>Recolleat · Your Food Journal</title>
+<meta name="recolleat-build" content="43.1"/>
 <script>try{if(localStorage.getItem("recolleat-opened-v43"))document.documentElement.classList.add("recolleat-returning")}catch(e){}</script>
 <script>/* Use extra bottom clearance only when the hosting platform inserts its own banner. */
 if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.site')) {
@@ -2153,7 +2154,7 @@ html,body,body *,button,input,textarea,select,option,summary,dialog,table,th,td,
 body *::before,body *::after{font-family:'Fraunces',Georgia,'Times New Roman',serif!important}
 body{font-variation-settings:'SOFT' 20,'WONK' 0;font-size:14px;line-height:1.5}
 button,input,textarea,select{line-height:1.35}
-#mobileBottomNav{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+#mobileBottomNav{grid-template-columns:repeat(5,minmax(0,1fr))!important}
 #mobileBottomNav button{min-width:0!important;padding:6px 2px!important;gap:2px!important}
 #mobileBottomNav .m-nav-label{font-size:clamp(10px,2.75vw,11.5px)!important;letter-spacing:-.01em;overflow:visible!important;white-space:nowrap;max-width:100%}
 #mobileBottomNav .m-nav-svg{width:clamp(19px,5.3vw,25px)!important;height:clamp(19px,5.3vw,25px)!important;flex-shrink:0}
@@ -2170,7 +2171,477 @@ button,input,textarea,select{line-height:1.35}
 }
 
 </style>
-<link href="./manifest.webmanifest" rel="manifest"/><link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="default"/><meta name="apple-mobile-web-app-title" content="Recolleat"/><meta content="#0b5b37" name="theme-color"/><link rel="stylesheet" href="./assets/recolleat-v41.css"/><link rel="stylesheet" href="./assets/recolleat-v42.css"/><link rel="stylesheet" href="./assets/recolleat-v43.css"/>
+<link href="./manifest.webmanifest" rel="manifest"/><link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="default"/><meta name="apple-mobile-web-app-title" content="Recolleat"/><meta content="#0b5b37" name="theme-color"/><style id="recolleat-bundled-css">
+/* Recolleat V41 – curated mobile UI layer. Uses existing palette CSS variables.
+   Does not change data model, IDs or event handlers. */
+:root { --v41-ease:cubic-bezier(.22,.7,.18,1); --v41-radius:18px; --v41-spacing:12px; }
+html { -webkit-text-size-adjust:100%; text-size-adjust:100%; scroll-padding-top:150px; }
+body { font-size:16px!important; line-height:1.52!important; overscroll-behavior-x:none; -webkit-tap-highlight-color:transparent; }
+:where(button,a,input,textarea,select,summary) { touch-action:manipulation; }
+:where(button,a,input,textarea,select,summary,[tabindex]):focus-visible {
+  outline:3px solid var(--accent)!important;outline-offset:3px!important;
+}
+:where(p,li,small,span,label) { overflow-wrap:break-word; }
+[hidden] { display:none!important; }
+/* Responsive, curated chrome */
+@media(max-width:850px) {
+  html,body { max-width:100%; overflow-x:clip!important; }
+  .workspace,.app,#mainJournalContent { min-width:0!important; max-width:100%!important; }
+  .app { padding-inline:12px!important; }
+  .workspace>.mobile-top-stack { position:sticky!important;top:0!important;z-index:105!important;
+    padding:0 0 8px!important;margin:0 -4px 8px!important;
+    background:color-mix(in srgb,var(--bg) 94%,transparent)!important;
+    border-bottom:1px solid var(--line);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px); }
+  .workspace>.mobile-top-stack>header { min-height:63px!important;margin:0!important;padding:7px 6px 5px!important;
+    border:0!important;background:transparent!important;box-shadow:none!important;gap:6px!important; }
+  .header-brand{gap:9px!important;min-width:0!important;}
+  .header-brand>div .workspace-eyebrow,.header-brand>div p {display:none!important}
+  .header-brand h1{font-family:'Fraunces',Georgia,serif!important;font-size:clamp(20px,5.2vw,25px)!important;
+    line-height:1.06!important;letter-spacing:-.055em!important;font-weight:760!important;}
+  .recolleat-mark {width:36px!important;height:36px!important;flex-shrink:0!important;}
+  .header-actions #addBtn{height:45px!important;min-height:45px!important;min-width:50px!important;width:50px!important;
+     max-width:50px!important;flex:0 0 50px!important;border-radius:15px!important;
+     background:var(--accent)!important;color:var(--accent-ink)!important;
+     box-shadow:0 8px 22px color-mix(in srgb,var(--accent) 18%,transparent)!important;
+     font:700 25px/1 'Fraunces',Georgia,serif!important; }
+  .header-actions #addBtn:active{transform:scale(.96)}
+  .mobile-bottom-nav {position:relative!important;left:auto!important;bottom:auto!important;inset:auto!important;
+    transform:none!important;width:100%!important;max-width:none!important;height:72px!important;min-height:72px!important;
+    padding:6px!important;margin:0!important;border:1px solid var(--line)!important;border-radius:19px!important;
+    background:color-mix(in srgb,var(--panel) 94%,var(--accent) 6%)!important;
+    box-shadow:0 8px 25px rgba(0,0,0,.08)!important;gap:3px!important;
+    grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+  #mobileBottomNav button {min-width:0!important;min-height:57px!important;max-height:59px!important;
+    transition:none!important;padding:5px 1px!important;border-radius:13px!important;gap:4px!important;
+    color:var(--ink)!important;background:transparent!important;opacity:.76;font-weight:650!important;}
+  #mobileBottomNav button.active,#mobileBottomNav button[aria-current="page"] {color:var(--accent-ink)!important;background:var(--accent)!important;opacity:1;
+    box-shadow:0 3px 13px color-mix(in srgb,var(--accent) 22%,transparent)!important;}
+  #mobileBottomNav button:not(.active):hover {background:var(--soft)!important;color:var(--ink)!important;opacity:1;}
+  #mobileBottomNav .m-nav-svg {width:23px!important;height:23px!important;flex-shrink:0;}
+  #mobileBottomNav .m-nav-label {font-size:clamp(10px,2.65vw,12px)!important;line-height:1.12!important;
+    letter-spacing:-.03em!important;overflow:visible!important;white-space:nowrap;}
+  .mobile-bottom-nav button:focus-visible {outline-offset:0!important;}
+  .mobile-intro,.mobile-titlebar {margin:11px 0 12px!important;}
+  .mobile-intro h2,.mobile-titlebar h2,#mobileSectionTitle {font-size:clamp(24px,6.3vw,30px)!important;
+    line-height:1.12!important;letter-spacing:-.045em!important;font-weight:780!important;margin:3px 0 4px!important;}
+  .mobile-intro p,#mobileSectionSubtitle {font-size:13px!important;line-height:1.4!important;color:var(--muted)!important;}
+  .mobile-collection-badge {font-size:11px!important;padding:8px 9px!important;white-space:nowrap;}
+  .stats {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important;
+    margin:8px 0 12px!important;}
+  .stats[style*="none"]{display:none!important}
+  .stat {min-height:94px!important;padding:13px 14px!important;border-radius:17px!important;
+    border:1px solid var(--line)!important;background:var(--panel)!important;box-shadow:none!important;}
+  .stat>span {font-size:11px!important;line-height:1.25!important;font-weight:720!important;
+    letter-spacing:.035em!important;max-width:100%;color:var(--muted)!important;}
+  .stat strong {font-size:clamp(24px,6vw,30px)!important;line-height:1.1!important;
+    margin:8px 0 4px!important;letter-spacing:-.02em!important;overflow-wrap:anywhere;}
+  .stat small {font-size:11px!important;line-height:1.3!important;color:var(--muted)!important;}
+  #mobileHome{min-width:0!important;}
+  .controls {margin:0 0 10px!important;}
+  .search-wrap{position:relative!important;min-width:0!important;}
+  #search {height:51px!important;min-height:51px!important;width:100%!important;padding:0 48px 0 47px!important;
+    border-radius:16px!important;border:1px solid var(--line)!important;background:var(--panel)!important;
+    color:var(--ink)!important;font-size:15px!important;line-height:1.35!important;box-shadow:none!important;}
+  #search::placeholder{color:var(--muted)!important;opacity:.92!important;font-size:14px!important;}
+  #v41ClearSearch {position:absolute;right:5px;top:50%;transform:translateY(-50%);z-index:2;
+    width:42px;height:42px;min-width:42px;border-radius:12px!important;font-size:24px!important;
+    color:var(--ink);background:var(--soft);border:1px solid var(--line);display:grid;place-items:center;}
+  #v41ClearSearch[hidden]{display:none!important}
+  .mobile-quick-controls{gap:9px!important;margin:0 0 10px!important;}
+  .mobile-quick-controls button,.grand-list-tools button {font-size:13px!important;min-height:44px!important;}
+  .mobile-quick-controls .menu-wrap>button {border-radius:13px!important;background:var(--panel)!important;
+    color:var(--ink)!important;padding:8px!important;}
+  .mobile-list-header{margin-top:10px!important;margin-bottom:9px!important;align-items:center!important;}
+  .mobile-list-header h3{font-size:21px!important;line-height:1.2!important;letter-spacing:-.03em!important;}
+  .mobile-list-header span{font-size:12px!important;color:var(--muted)!important;}
+  .jump-recents{gap:8px!important;margin:0 0 12px!important;}
+  .rank-jump{padding:7px 9px!important;border-radius:14px!important;gap:7px!important;min-width:0;}
+  .rank-jump label,.recent-places>span {font-size:12px!important;font-weight:680!important;}
+  .rank-jump input{min-width:0!important;width:min(100%,94px)!important;min-height:42px!important;font-size:14px!important;}
+  .rank-jump button{min-height:42px!important;min-width:55px!important;background:var(--accent)!important;
+    color:var(--accent-ink)!important;border-radius:11px!important;font-size:13px!important;}
+  .recent-places{min-width:0!important;}
+  .recent-chips button{font-size:12px!important;min-height:37px!important;max-width:100%;}
+  .mobile-restaurant{grid-template-columns:90px minmax(0,1fr)!important;gap:10px!important;
+    padding:10px!important;min-height:139px!important;border-radius:18px!important;
+    background:var(--panel)!important;border:1px solid var(--line)!important;
+    box-shadow:0 5px 18px rgba(0,0,0,.04)!important;}
+  .mobile-restaurant .mobile-photo {width:90px!important;height:100%!important;min-height:117px!important;border-radius:12px!important;}
+  .mobile-r-copy {min-width:0!important;}
+  .mobile-r-upper h3 {font-size:clamp(16px,4vw,19px)!important;line-height:1.15!important;
+    font-weight:750!important;letter-spacing:-.025em!important;overflow-wrap:anywhere!important;}
+  .mobile-r-upper small {display:block;font-size:12px!important;line-height:1.35!important;
+    color:var(--muted)!important;margin-top:3px!important;overflow-wrap:anywhere;}
+  .mobile-r-score {font-size:17px!important;min-width:40px!important;padding:6px!important;line-height:1.2!important;}
+  .mobile-pillrow{gap:4px!important;flex-wrap:wrap!important;margin:7px 0!important;}
+  .mobile-pill{font-size:11px!important;line-height:1.25!important;padding:5px 6px!important;}
+  .mobile-r-actions{gap:7px!important;margin-top:auto!important;}
+  .mobile-r-actions button {min-height:39px!important;font-size:12px!important;font-weight:650!important;
+    border-radius:11px!important;padding:7px 6px!important;}
+  .mobile-r-actions button:first-child {background:var(--accent)!important;color:var(--accent-ink)!important;}
+  .mobile-r-actions button:last-child{background:var(--soft)!important;color:var(--ink)!important;}
+  .recolleat-show-more {min-height:46px!important;font-size:13px!important;margin:10px 0!important;}
+  .needs-attention {margin-top:12px!important;}
+  .needs-attention summary{font-size:14px!important;min-height:44px;}
+  .drafts-panel,.feature-panel,.privacy-page,.profile-page{max-width:100%!important;min-width:0!important;}
+  :where(.feature-panel,.profile-card,.privacy-grid>*,.dish-panel,.visit-panel){border-radius:17px!important;}
+  .feature-heading h2,.visit-toolbar h2,.privacy-page h2,.profile-page h2 {font-size:clamp(23px,6vw,32px)!important;
+    line-height:1.13!important;letter-spacing:-.04em!important;}
+  .feature-heading p,.visit-view p,.profile-page p,.privacy-page p,.help-page p{font-size:14px!important;line-height:1.5!important;}
+  .feature-kicker,.mobile-eyebrow,.profile-eyebrow{font-size:11px!important;letter-spacing:.12em!important;}
+  .dish-section-tabs button,.visit-mode-tabs button{min-height:46px!important;font-size:13px!important;}
+  :where(.dish-name,.dish-title,.ranked-row b,.dish-row b){overflow-wrap:anywhere!important;min-width:0!important;}
+  :where(.ranked-row,.dish-ranked-row,.dish-row,.dish-card){max-width:100%!important;min-width:0!important;}
+  .mobile-more-sheet{padding:17px 14px max(22px,env(safe-area-inset-bottom))!important;
+    background:var(--panel)!important;box-shadow:0 -18px 60px rgba(0,0,0,.25)!important;}
+  .mobile-more-top h2{font-size:clamp(23px,6vw,29px)!important;line-height:1.16!important;}
+  .mobile-more-links{gap:9px!important;}
+  .mobile-more-links button{min-height:65px!important;line-height:1.25!important;padding:11px!important;
+    font-size:14px!important;text-align:left!important;justify-content:flex-start!important;border-radius:15px!important;}
+  .mobile-more-links .more-help-link{min-height:56px!important;}
+  .mobile-more-links .more-icon{font-size:19px!important;min-width:21px!important;}
+  .mobile-more-top #mobileMoreClose{width:47px!important;height:47px!important;min-width:47px!important;min-height:47px!important;}
+  #mobileMoreSheet[aria-hidden="true"]{visibility:hidden;}
+  #mobileMoreSheet[aria-hidden="false"]{visibility:visible;}
+  .mobile-backup-actions button{min-height:45px!important;font-size:13px!important;}
+  .mobile-install-hint,.mobile-backup-panel p{font-size:13px!important;line-height:1.5!important;}
+  .profile-stat h4{font-size:14px!important;}
+  .privacy-grid{max-width:100%;}
+  dialog{max-width:calc(100vw - 18px)!important;max-height:calc(100dvh - 26px)!important;}
+  :where(dialog button,dialog input,dialog select,dialog textarea){font-size:max(14px,1em);}
+  :where(dialog label,dialog small,dialog p){line-height:1.45!important;}
+  :where(.editor-step,.reco-choice-grid button,.quick-add-form button){min-height:45px!important;}
+  .app-toast{font-size:14px!important;line-height:1.4!important;}
+  /* Onboarding and contextual re-entry are deliberately small and non-modal. */
+  .v41-onboarding {padding:20px 18px;margin:4px 0 15px;
+    border:1px solid color-mix(in srgb,var(--accent) 46%,var(--line));border-radius:22px;
+    background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 13%,var(--panel)),var(--panel));}
+  .v41-eyebrow{display:block;font-size:11px!important;font-weight:790;letter-spacing:.12em;
+    color:var(--muted);margin-bottom:5px;}
+  .v41-onboarding h3{font-size:clamp(22px,6vw,28px)!important;line-height:1.12!important;
+    margin:2px 0 10px!important;letter-spacing:-.04em!important;}
+  .v41-onboarding p{font-size:14px!important;line-height:1.5!important;color:var(--muted);max-width:38ch;}
+  .v41-onboarding-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:17px;}
+  .v41-onboarding-actions button{min-width:0;min-height:47px;border-radius:13px;font-size:14px!important;font-weight:730!important;}
+  .v41-onboarding-actions .v41-main-cta{background:var(--accent)!important;color:var(--accent-ink)!important;border-color:transparent!important;}
+  .v41-onboarding-actions button:last-child{background:var(--soft)!important;color:var(--ink)!important;border:1px solid var(--line)!important;}
+  .v41-nextstep {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 13px;
+    margin:0 0 13px;border-radius:16px;border:1px solid var(--line);background:var(--panel);}
+  .v41-nextstep>div{min-width:0;flex:1;}
+  .v41-nextstep b{display:block;font-size:14px!important;line-height:1.26;overflow-wrap:anywhere;}
+  .v41-nextstep p{font-size:12px!important;line-height:1.35!important;color:var(--muted);margin:3px 0 0!important;}
+  .v41-nextstep button{flex:0 0 auto;max-width:108px;min-height:44px;border-radius:11px;
+    padding:7px 9px;background:var(--accent)!important;color:var(--accent-ink)!important;
+    font-size:12px!important;font-weight:720!important;white-space:normal;}
+}
+@media(hover:none){
+  #mobileBottomNav button:not(.active):hover{background:transparent!important;color:var(--ink)!important;opacity:.76!important;}
+}
+@media(max-width:360px){
+  #mobileBottomNav .m-nav-label{font-size:11px!important;letter-spacing:-.045em!important;}
+  #mobileBottomNav .m-nav-svg{width:21px!important;height:21px!important;}
+  .mobile-restaurant{grid-template-columns:80px minmax(0,1fr)!important;gap:8px!important;padding:8px!important;}
+  .mobile-restaurant .mobile-photo{width:80px!important;}
+  .mobile-r-upper h3{font-size:15px!important;}
+  .mobile-r-score{min-width:37px!important;font-size:15px!important;}
+  .mobile-r-actions button{font-size:11px!important;}
+  .mobile-pill{font-size:10px!important;}
+  .stat{padding:11px!important;}
+  .mobile-more-links button{font-size:12.5px!important;}
+}
+@media(min-width:851px){
+  /* Desktop preview stays usable; mobile patterns remain scoped above. */
+  .v41-onboarding{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--panel)}
+  .v41-onboarding-actions{display:flex;gap:10px;margin-top:15px}
+  .v41-onboarding-actions button{padding:12px 16px}
+  .v41-nextstep{display:flex;justify-content:space-between;gap:15px;padding:16px;border:1px solid var(--line);border-radius:16px}
+}
+/* Apply the native hidden state after all display overrides, including legacy !important declarations. */
+[hidden], .stats[hidden], .controls[hidden], #mobileControlMount[hidden], #mobileHome [hidden] {display:none!important;}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;}
+}
+
+/* Build 42: one small accessible design layer on top of the retained Build 41 UI. */
+:root{color-scheme:light dark}
+html[data-mode='dark']{color-scheme:dark}
+html[data-mode='light']{color-scheme:light}
+html.recolleat-returning .recolleat-splash{display:none!important}
+html,body{scroll-padding-top:20px}
+/* A display serif distinguishes Recolleat without sacrificing body readability. */
+body,button,input,select,textarea,option,summary,dialog,table,th,td,
+body :where(p,span,label,small,b,em,strong,li,caption){font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+:where(h1,h2,h3,.brand-dot,.header-brand h1,.passport-hero h2,.mobile-intro h2){font-family:'Fraunces',Georgia,serif!important}
+:where(button,input,select,textarea){font-size:max(14px,1em)}
+:where(button,a[href],input,select,textarea,summary,[tabindex]):focus-visible{outline:3px solid var(--accent)!important;outline-offset:3px!important;box-shadow:0 0 0 5px var(--focus)!important}
+:where(.mobile-r-actions button,.passport-actions button,.mobile-backup-actions button,.editor-step-controls button){min-height:44px!important}
+:where(.mobile-r-upper small,.mobile-list-header span,.v41-nextstep p,.mobile-pill,.draft-row small,.profile-hint,.feature-muted,.visit-history-note){font-size:12px!important;line-height:1.45!important}
+:where(.stat span,.profile-kicker,.profile-eyebrow,.mobile-eyebrow,.feature-kicker,.v41-eyebrow){font-size:11px!important}
+.mobile-restaurant .mobile-r-copy{display:flex;flex-direction:column;justify-content:space-between}
+.mobile-restaurant .mobile-r-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.mobile-restaurant .mobile-r-actions button{white-space:normal;min-width:0!important;padding:9px 6px!important;font-size:12px!important}
+.mobile-restaurant .mobile-r-actions button:last-child{background:var(--soft)!important;color:var(--ink)!important}
+.v42-backup-status{margin:9px 0!important;color:var(--muted);font-size:12px!important}
+#mobileBottomNav{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+#mobileBottomNav button{min-width:0!important;min-height:58px!important;padding:6px 3px!important}
+#mobileBottomNav .m-nav-label{font-size:clamp(11px,2.9vw,13px)!important;letter-spacing:0!important}
+#mobileBottomNav .m-nav-svg{width:24px!important;height:24px!important}
+#mobileMoreSheet .mobile-more-links{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#mobileMoreSheet .mobile-more-links button{font-size:14px!important;min-height:56px!important;text-align:left!important;justify-content:flex-start!important}
+#mobileMoreSheet .mobile-more-links .more-help-link{grid-column:1/-1}
+#mobileMoreSheet .mobile-backup-panel{border-top:1px solid var(--line);margin-top:9px;padding-top:10px}
+#mobileHome .mobile-list-header h3{font-weight:750}
+:where(.passport-score-strip,.passport-meta,.passport-accordion){max-width:100%;min-width:0}
+.passport-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+#passportLogVisitBtn{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-size:13px}
+#passportDialog .passport-score-strip b{font-size:clamp(18px,5vw,28px)}
+@media(max-width:430px){
+  .mobile-pillrow{display:flex;gap:5px!important}
+  .mobile-r-upper small{font-size:12px!important}
+  .mobile-restaurant{min-height:146px!important}
+  .mobile-restaurant .mobile-photo{min-height:121px!important}
+  .mobile-more-links button{font-size:14px!important}
+  .mobile-intro h2{font-size:clamp(24px,6vw,30px)!important}
+}
+@media(max-width:350px){
+  #mobileBottomNav .m-nav-label{font-size:11px!important}
+  #mobileMoreSheet .mobile-more-links{gap:7px!important}
+  .mobile-restaurant .mobile-photo{width:74px!important}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}}
+[hidden],dialog[hidden]{display:none!important}
+
+.v42-storage-warning{margin:12px 0;padding:15px 17px;border:2px solid #c45d3f;background:#fff4ec;color:#6a1e11;border-radius:14px;font:600 14px/1.5 ui-sans-serif,system-ui!important}
+.v42-storage-warning strong{display:block;font-weight:850}
+[hidden].v42-storage-warning{display:none!important}
+
+/* Recolleat Build 43: consistent type, compact cards, flexible landscape and two-price visits.
+   This is additive to the retained V41/V42 application; no fonts are bundled. */
+:root{
+ --type-micro:11px;--type-caption:12px;--type-body:14px;--type-control:14px;
+ --type-card:16px;--type-section:20px;--type-page:26px;--type-display:30px;
+ --icon-small:18px;--icon-nav:23px;--control-height:44px;
+ --ui-gap:10px;--ui-padding:14px;
+}
+/* Recolleat's Fraunces applies consistently; size is now role-based. */
+html body{font-size:var(--type-body)!important;line-height:1.48!important}
+html body :where(.mobile-eyebrow,.feature-kicker,.profile-kicker,.profile-eyebrow,.stat span,.month-summary span,.cuisine-section-title,.feature-muted,.mobile-pill,.dish-category,.meta,.profile-hint,.cal-head,.visit-history-note,.mobile-r-upper small,.dish-stat span,.stamp-explainer p){font-size:var(--type-caption)!important;line-height:1.4!important}
+html body :where(.mobile-intro h2,.feature-heading h2,.cuisine-header h2,.visit-toolbar h2,.profile-intro h2){font-size:var(--type-page)!important;line-height:1.16!important;letter-spacing:-.035em!important}
+html body :where(.reco-acc-title strong,.dish-category-manager h3,.hof-head h3,.month-nav strong,.feature-panel h3,.location-detail-head h2,.bubble-head h2){font-size:var(--type-section)!important;line-height:1.22!important}
+html body :where(.mobile-restaurant h3,.card h3,.hof-name h3,.dish-stamp-category b,.month-rest-row b,.passport-accordion summary,.wrapped-card b){font-size:var(--type-card)!important;line-height:1.25!important}
+html body :where(.month-summary b,.dish-stat strong,.stat strong){font-size:var(--type-section)!important;line-height:1.22!important}
+html body :where(.mobile-bottom-nav button .m-nav-label){font-size:var(--type-caption)!important;line-height:1.1!important}
+html body :where(.mobile-bottom-nav .m-nav-svg){width:var(--icon-nav)!important;height:var(--icon-nav)!important}
+html body :where(.dish-toolbar label,.visit-costs label,.visit-editor-row label,.dish-category-manager label){font-size:var(--type-caption)!important}
+html body :where(.dish-toolbar input,.dish-toolbar select,.dish-toolbar button,.visit-costs input,.visit-editor-row input,.visit-editor-row button){font-size:var(--type-control)!important}
+html body :where(.stat,.dish-stat,.dish-stamp-category){min-width:0}
+/* The 7 'More' destinations are 1 / 2 / 2 / 2; all icons and labels share an axis. */
+#mobileMoreSheet .mobile-more-links{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+#mobileMoreSheet .mobile-more-links button{grid-column:auto!important;justify-self:stretch!important;width:100%!important;min-width:0!important;min-height:67px!important;padding:10px 7px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;text-align:center!important;font-size:var(--type-control)!important;line-height:1.18!important}
+#mobileMoreSheet .mobile-more-links .more-help-link{grid-column:1/-1!important;min-height:57px!important;flex-direction:row!important;gap:10px!important}
+#mobileMoreSheet .mobile-more-links [data-more-view="privacy"]{grid-column:2!important;justify-self:stretch!important;max-width:none!important}
+#mobileMoreSheet .mobile-more-links .more-icon{font-size:21px!important;line-height:1!important;width:24px!important;height:24px!important;flex:0 0 24px!important;display:grid!important;place-items:center!important}
+#mobileMoreSheet .mobile-more-links .more-label{display:block;min-width:0;text-align:center;overflow-wrap:anywhere;font-size:var(--type-control)!important}
+#mobileMoreSheet .mobile-more-links .more-label small{font-size:var(--type-caption)!important}
+/* Keep cuisine title exactly once on mobile; retain interior heading on desktop. */
+@media(max-width:1100px){#cuisineView .cuisine-internal-heading{display:none!important}}
+/* Dish counters are supportive metadata, not competing hero cards. */
+#dishStats.dish-stats-bottom{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;margin-top:12px!important;max-width:420px!important}
+#dishStats .dish-stat{padding:10px 12px!important;min-height:70px!important;box-shadow:none!important;border-radius:12px!important}
+#dishStats .dish-stat strong{display:block;margin:3px 0 0!important;font-size:21px!important}
+#dishStats .dish-stat small{font-size:12px!important}
+#dishCategoryHighlights.dish-stamp-categories{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(155px,1fr))!important;gap:9px!important}
+#dishCategoryHighlights .dish-stamp-category{min-height:0!important;padding:11px!important;gap:5px!important;border-radius:13px!important}
+#dishCategoryHighlights .dish-stamp-category b{font-size:14px!important}
+#dishCategoryHighlights .dish-stamp-category p,#dishCategoryHighlights .dish-stamp-action{font-size:12px!important;line-height:1.35!important}
+.dish-toolbar{gap:8px!important;padding:11px!important}
+.dish-toolbar label{min-width:0!important}
+/* Calendar: food value is not personal spending; incomplete values remain unknown. */
+.visit-costs{border:1px solid var(--line);border-radius:14px;margin:8px 0;padding:14px;min-width:0;background:var(--wash)}
+.visit-costs legend{font-weight:850;color:var(--ink);font-size:var(--type-card);padding:0 5px}
+.visit-price-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.visit-price-fields label{display:flex;flex-direction:column;gap:5px;min-width:0}
+.visit-price-fields input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.visit-price-fields input:disabled{opacity:.7;background:var(--soft);cursor:not-allowed}
+.visit-costs .field-hint{margin:4px 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
+.visit-costs #visitCostHint{margin:11px 0 0}
+.visit-treat-toggle{display:flex!important;align-items:center;gap:10px;padding:12px;margin-top:11px;border-radius:12px;border:1px solid var(--line);background:var(--panel);cursor:pointer}
+.visit-treat-toggle input{width:21px;height:21px;flex:0 0 21px;accent-color:var(--accent)}
+.visit-treat-toggle span{display:flex;flex-direction:column;gap:2px}
+.visit-treat-toggle small{font-size:12px;color:var(--muted)}
+.visit-editor-row{display:grid!important;grid-template-columns:minmax(92px,1.1fr) repeat(3,minmax(95px,1fr)) minmax(66px,.7fr) auto!important;gap:8px!important;align-items:end!important}
+.visit-editor-row label{grid-row:auto!important;grid-column:auto!important;display:flex;flex-direction:column;gap:5px;min-width:0}
+.visit-editor-row label input[type="number"],.visit-editor-row label input[type="date"]{max-width:100%;min-width:0;box-sizing:border-box}
+.visit-editor-row .editor-visit-treated{align-items:center;justify-content:center;flex-direction:row;min-height:42px}
+.visit-editor-row button{grid-row:auto!important;grid-column:auto!important;min-height:42px}
+.month-summary{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:7px!important}
+.month-summary div{padding:11px 8px!important;min-width:0;background:var(--wash)!important}
+.month-summary span{display:block;color:var(--muted);font-size:11px!important}
+.month-summary b{display:block;white-space:normal;overflow-wrap:anywhere}
+.month-summary small{display:block;font-size:11px;color:var(--muted);line-height:1.35;margin-top:3px}
+.month-rest-row b small{font-size:11px;font-weight:500;color:var(--muted)}
+.visit-log-row .spend{font-size:13px;min-width:0}
+.cost-breakdown{display:flex;flex-direction:column;gap:2px;align-items:flex-end;white-space:nowrap}
+.cost-breakdown small{font-size:11px;color:var(--muted);font-weight:450}
+/* Native modal, opened on top of the passport (not an underlaid fixed div). */
+#lightbox.lightbox{position:fixed!important;inset:0!important;box-sizing:border-box!important;width:100dvw!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:clamp(16px,4vw,42px)!important;border:0!important;border-radius:0!important;background:rgba(8,12,11,.95)!important;color:#fff!important;box-shadow:none!important;overflow:hidden!important;align-items:center;justify-content:center;z-index:99999!important}
+#lightbox.lightbox[open]{display:flex!important}
+#lightbox.lightbox:not([open]){display:none!important}
+#lightbox::backdrop{background:rgba(0,0,0,.75)}
+#lightbox img{display:block;object-fit:contain;max-width:94vw!important;max-height:87dvh!important;width:min(94vw,1100px)!important;height:87dvh!important;border-radius:9px}
+.lightbox-close{position:fixed;top:calc(10px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));z-index:2;min-width:44px;min-height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(30,30,30,.85);color:#fff;font-size:28px;display:grid;place-items:center}
+#passportContent [data-photo],#passportContent [data-passport-cover],#passportContent [data-location-photo]{cursor:zoom-in!important}
+#passportContent [data-photo]:focus-visible,#passportContent [data-passport-cover]:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+/* One clear action, useful content even with an empty collection. */
+.reco-empty-state{min-height:130px!important;display:flex!important;flex-direction:column!important;gap:8px!important;justify-content:center!important;align-items:center!important;padding:24px 15px!important;text-align:center;border:1px dashed var(--line);border-radius:15px;background:var(--panel);color:var(--ink)}
+.reco-empty-state b{font-size:var(--type-card);color:var(--ink)}
+.reco-empty-state p{font-size:var(--type-body);max-width:32rem;margin:0;color:var(--muted)}
+.reco-empty-state button{min-height:44px;padding:9px 15px;background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:800}
+/* Landscape must respond to actual screen height, not just viewport width. */
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){
+ :root{--type-page:23px;--type-section:18px;--type-card:15px;--type-body:13px;--type-control:13px;--type-caption:11px;--ui-gap:8px}
+ html,body{width:100%;max-width:100%;overflow-x:hidden}
+ .app,.app.sidebar-collapsed{display:block!important;width:100%!important;height:auto!important;max-width:100%!important;padding:8px 11px 16px!important;grid-template-columns:none!important}
+ .app-sidebar{position:fixed!important;inset:0 auto 0 0!important;max-width:88vw!important;max-height:100dvh!important;height:100dvh!important;transform:translateX(-110%)!important;z-index:1110!important}
+ .app.sidebar-mobile-open .app-sidebar{transform:translateX(0)!important}
+ .workspace{width:100%!important;max-width:100%!important;min-width:0!important;min-height:100dvh!important;padding:0 4px 18px!important;margin:0!important;overflow-x:clip!important}
+ .mobile-top-stack{position:sticky!important;top:0!important;padding:0 0 4px!important}
+ .workspace>.mobile-top-stack>header{height:48px!important;min-height:48px!important;max-height:48px!important;margin:0 0 5px!important;padding:3px 9px!important}
+ .mobile-top-stack .recolleat-mark{width:30px!important;height:30px!important;flex:0 0 30px!important}
+ .mobile-top-stack .header-brand h1{font-size:19px!important}
+ .mobile-top-stack .header-actions #addBtn{width:39px!important;min-width:39px!important;max-width:39px!important;height:36px!important;min-height:36px!important;flex-basis:39px!important;font-size:0!important;padding:0!important}
+ .mobile-top-stack .header-actions #addBtn:after{content:'+'!important;font-size:23px!important}
+ #mobileBottomNav{height:52px!important;min-height:52px!important;padding:3px 5px!important;border-radius:12px!important}
+ #mobileBottomNav button{min-height:44px!important;height:44px!important;flex-direction:row!important;gap:7px!important}
+ #mobileBottomNav .m-nav-svg{width:20px!important;height:20px!important}
+ #mobileBottomNav .m-nav-label{font-size:12px!important}
+ .mobile-intro{min-height:0!important;margin:3px 0!important;padding:4px 2px!important}
+ .mobile-intro h2{font-size:22px!important;margin:0!important}
+ .mobile-intro p{font-size:11px!important}
+ .mobile-intro .mobile-eyebrow{display:none!important}
+ .stats{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:7px!important}
+ .stat{padding:9px!important;min-height:68px!important}
+ .stat strong{font-size:19px!important}
+ .mobile-restaurant{min-height:116px!important;max-width:100%;}
+ .mobile-restaurant .mobile-photo{min-height:105px!important}
+ .mobile-restaurant .mobile-r-actions button{min-height:36px!important}
+ #mobileRestaurantFeed{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+ #cardView.cards{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+ .bubble-stage.mobile-locations-stage{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
+ #locationDetailGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ .cuisine-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ .cuisine-podium{grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:stretch!important}
+ .graph-view,.list-view{grid-template-columns:minmax(0,1fr)!important}
+ .graph-filters{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+ .lab-view,.dishes-view,.visit-view,.profile-page{min-width:0!important;max-width:100%!important}
+ .dish-toolbar{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important}
+ .dish-toolbar label{min-width:0!important}
+ .dish-toolbar button{grid-column:auto!important}
+ #dishCategoryHighlights.dish-stamp-categories{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+ #dishStats.dish-stats-bottom{max-width:400px!important}
+ .month-summary{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+ .visit-layout{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)!important;gap:10px!important}
+ .visit-view .cal-day{min-height:46px!important;padding:4px!important}
+ .visit-view .calendar-grid{gap:3px!important}
+ .visit-view .month-nav{gap:6px!important}
+ .monthly-wrapped-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ .profile-stats-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+ #mobileMoreSheet{width:min(700px,94vw)!important;max-height:calc(100dvh - 8px)!important;padding:9px 13px 12px!important}
+ #mobileMoreSheet .mobile-more-links{gap:6px!important}
+ #mobileMoreSheet .mobile-more-links button{min-height:42px!important;padding:5px!important;flex-direction:row!important}
+ #mobileMoreSheet .mobile-more-links .more-icon{font-size:17px!important;width:20px!important;height:20px!important;flex-basis:20px!important}
+ #mobileMoreSheet .mobile-more-links .more-help-link{min-height:37px!important}
+ #mobileMoreSheet .mobile-install-hint{display:none!important}
+ dialog{max-height:calc(100dvh - 8px)!important}
+ #editor{width:min(750px,98vw)!important;max-width:750px!important}
+ #passportDialog{width:min(900px,97vw)!important;max-width:97vw!important}
+ #passportDialog .passport-hero{min-height:155px!important}
+ #lightbox.lightbox{max-height:none!important}
+}
+@media(max-width:700px) and (orientation:portrait){
+ #dishPanelHall .dish-toolbar{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;align-items:end!important;gap:9px!important}
+ #dishPanelHall .dish-toolbar label{flex:none!important;min-width:0!important;width:100%!important;grid-column:auto!important}
+ #dishPanelHall .dish-toolbar label:first-child{grid-column:1/-1!important}
+ #dishPanelHall .dish-toolbar>button{grid-column:1/-1!important;width:100%!important}
+}
+@media(max-width:700px){
+ :root{--type-page:23px;--type-section:18px;--type-card:15px;--type-body:14px;--type-control:14px;--type-caption:12px}
+ .visit-price-fields{grid-template-columns:1fr}
+ .visit-editor-row{grid-template-columns:repeat(2,minmax(0,1fr))!important;align-items:center!important}
+ .visit-editor-row .visit-row-index{grid-column:1!important;grid-row:1!important}
+ .visit-editor-row button{grid-column:2!important;grid-row:1!important}
+ .visit-editor-row label{grid-column:auto!important;grid-row:auto!important}
+ .month-summary{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+ .visit-log-row{grid-template-columns:minmax(65px,1fr) minmax(0,1.6fr) auto!important}
+ .visit-log-row .spend{grid-column:2!important;grid-row:2!important;justify-self:start!important}
+ .visit-log-row .cost-breakdown{align-items:flex-start!important}
+ .visit-log-row button{grid-column:3!important;grid-row:1 / 3!important}
+}
+@media(max-width:350px){.month-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important} #dishStats.dish-stats-bottom{gap:6px!important}}
+@media(prefers-reduced-motion:reduce){#lightbox *{transition:none!important}}
+
+
+/* Build 43.1 — five truly equal navigation destinations. Keep final specificity
+   above all retained legacy layout rules in portrait AND landscape. */
+@media (max-width:1100px) {
+  #mobileBottomNav.mobile-bottom-nav {
+    display:grid!important;
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    grid-template-rows:1fr!important;
+    align-items:stretch!important;
+    justify-items:stretch!important;
+    gap:3px!important;
+    width:100%!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+  }
+  #mobileBottomNav.mobile-bottom-nav > button {
+    grid-column:auto!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:center!important;
+    justify-content:center!important;
+    justify-self:stretch!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    margin:0!important;
+    text-align:center!important;
+    gap:4px!important;
+  }
+  #mobileBottomNav .m-nav-svg {
+    flex:0 0 auto!important;
+    display:block!important;
+    width:21px!important;
+    height:21px!important;
+  }
+  #mobileBottomNav .m-nav-label {
+    display:block!important;
+    width:100%!important;
+    max-width:100%!important;
+    margin:0!important;
+    padding:0!important;
+    font-size:clamp(10px,2.7vw,12px)!important;
+    line-height:1.1!important;
+    text-align:center!important;
+    white-space:nowrap!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+  }
+}
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px) {
+  #mobileBottomNav.mobile-bottom-nav{grid-template-columns:repeat(5,minmax(0,1fr))!important;}
+  #mobileBottomNav.mobile-bottom-nav>button{flex-direction:row!important;gap:7px!important;}
+  #mobileBottomNav .m-nav-label{width:auto!important;}
+}
+/* Keep the More grid centred, including Profile and Privacy side by side. */
+#mobileMoreSheet .mobile-more-links [data-more-view="profile"],
+#mobileMoreSheet .mobile-more-links [data-more-view="privacy"]{min-width:0!important;max-width:none!important;width:100%!important;justify-self:stretch!important;}
+#mobileMoreSheet .mobile-more-links .more-icon,
+#mobileMoreSheet .mobile-more-links .more-label{text-align:center!important;}
+
+</style>
 </head>
 <body>
 <div id="recolleatSplash" class="recolleat-splash" role="status" aria-live="polite" aria-label="Opening Recolleat">
@@ -4857,6 +5328,6 @@ if(document.readyState==='loading'){
 }else{start()}
 })();
 </script>
-<div class="mobile-more-backdrop" id="mobileMoreBackdrop" aria-hidden="true"></div><section aria-hidden="true" aria-label="More Recolleat sections" aria-modal="true" class="mobile-more-sheet" id="mobileMoreSheet" role="dialog" inert><div class="mobile-more-handle"></div><div class="mobile-more-top"><div><span class="mobile-eyebrow">DISCOVER MORE</span><h2 id="v42MoreHeading">Explore Recolleat</h2></div><button aria-label="Close menu" id="mobileMoreClose" type="button">×</button></div><div class="mobile-more-links"><button class="more-help-link" data-more-view="help" type="button"><span class="more-icon" aria-hidden="true">?</span><span class="more-label">Help &amp; FAQs <small>· Start here</small></span></button><button data-more-view="cards" type="button"><span class="more-icon" aria-hidden="true">▧</span><span class="more-label">Restaurant cards</span></button><button data-more-view="cuisines" type="button"><span class="more-icon" aria-hidden="true">♛</span><span class="more-label">Cuisine podium</span></button><button data-more-view="lab" type="button"><span class="more-icon" aria-hidden="true">⚖</span><span class="more-label">Ranking Laboratory</span></button><button data-more-view="lists" type="button"><span class="more-icon" aria-hidden="true">☷</span><span class="more-label">Saved lists</span></button><button data-more-view="profile" type="button"><span class="more-icon" aria-hidden="true">◉</span><span class="more-label">My Profile</span></button><button data-more-view="privacy" type="button"><span class="more-icon" aria-hidden="true">♧</span><span class="more-label">Privacy &amp; Safety</span></button></div><div class="mobile-theme-panel" id="mobileThemeMount"></div><div class="mobile-backup-panel"><b>Keep your memories safe</b><p>Your journal is stored on this device, not automatically synced to other devices. Export a backup regularly and import the same file on another device.</p><p id="v42BackupStatus" class="v42-backup-status" role="status">No export recorded on this device.</p><div class="mobile-backup-actions"><button id="mobileExport" type="button">↓ Export backup</button><button id="mobileImport" type="button">↑ Import backup</button><button id="v42VerifyBackup" type="button">✓ Verify a backup</button><input type="file" id="v42VerifyFile" accept=".json,application/json" hidden></div></div><div class="mobile-install-hint"><b>Install for offline use:</b> open the hosted HTTPS website in Safari on iPhone (Share → Add to Home Screen), or Chrome on other phones (Install app or Add to Home screen). Opening a standalone HTML file is not the same as installing the web app.</div></section><div id="appToast" class="app-toast" role="status" aria-live="polite"></div>
+<div class="mobile-more-backdrop" id="mobileMoreBackdrop" aria-hidden="true"></div><section aria-hidden="true" aria-label="More Recolleat sections" aria-modal="true" class="mobile-more-sheet" id="mobileMoreSheet" role="dialog" inert><div class="mobile-more-handle"></div><div class="mobile-more-top"><div><span class="mobile-eyebrow">DISCOVER MORE</span><h2 id="v42MoreHeading">Explore Recolleat</h2></div><button aria-label="Close menu" id="mobileMoreClose" type="button">×</button></div><div class="mobile-more-links"><button class="more-help-link" data-more-view="help" type="button"><span class="more-icon" aria-hidden="true">?</span><span class="more-label">Help &amp; FAQs <small>· Start here</small></span></button><button data-more-view="cards" type="button"><span class="more-icon" aria-hidden="true">▧</span><span class="more-label">Restaurant cards</span></button><button data-more-view="cuisines" type="button"><span class="more-icon" aria-hidden="true">♛</span><span class="more-label">Cuisine podium</span></button><button data-more-view="lab" type="button"><span class="more-icon" aria-hidden="true">⚖</span><span class="more-label">Ranking Laboratory</span></button><button data-more-view="lists" type="button"><span class="more-icon" aria-hidden="true">☷</span><span class="more-label">Saved lists</span></button><button data-more-view="profile" type="button"><span class="more-icon" aria-hidden="true">◉</span><span class="more-label">My Profile</span></button><button data-more-view="privacy" type="button"><span class="more-icon" aria-hidden="true">♧</span><span class="more-label">Privacy &amp; Safety</span></button></div><div class="mobile-theme-panel" id="mobileThemeMount"></div><div class="mobile-backup-panel"><b>Keep your memories safe</b><p>Your journal is stored on this device, not automatically synced to other devices. Export a backup regularly and import the same file on another device.</p><p id="v42BackupStatus" class="v42-backup-status" role="status">No export recorded on this device.</p><div class="mobile-backup-actions"><button id="mobileExport" type="button">↓ Export backup</button><button id="mobileImport" type="button">↑ Import backup</button><button id="v42VerifyBackup" type="button">✓ Verify a backup</button><input type="file" id="v42VerifyFile" accept=".json,application/json" hidden></div></div><p class="recolleat-build-indicator" style="margin:12px 0 0;font-size:11px;text-align:center;color:var(--muted)">Recolleat Build 43.1 · Layout correction</p><div class="mobile-install-hint"><b>Install for offline use:</b> open the hosted HTTPS website in Safari on iPhone (Share → Add to Home Screen), or Chrome on other phones (Install app or Add to Home screen). Opening a standalone HTML file is not the same as installing the web app.</div></section><div id="appToast" class="app-toast" role="status" aria-live="polite"></div>
 </body>
 </html>
