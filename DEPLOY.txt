@@ -1,9 +1,25 @@
-Recolleat Build 44.2 — Android app install diagnostics
+Recolleat Build 45 — Local-First Journal & Retention Upgrade
+22 November 2026
 
-1. Export a JSON backup of your Recolleat collection, but DO NOT clear browser site data.
-2. Extract the zip, upload all files to the GitHub REPOSITORY ROOT, on main. Do not upload the zip or an extra folder.
-3. Commit and wait for Cloudflare Workers successful deployment; keep the current deploy command.
-4. On the Android phone open https://recolleat.journaled.workers.dev/install-check.html and select Run checks again.
-5. If any check fails, use Copy report and share the results. If checks pass but Install still fails, the issue may be Chrome's Android WebAPK installation service, not the website files. Do not resort to a shortcut or clear Chrome storage.
+IMPORTANT — BACK UP FIRST
+Export your existing Build 44.2 journal to a downloaded JSON file before updating. Keep the file somewhere outside this device. Build 45 upgrades the IndexedDB schema from version 6 to 7. Older application builds cannot open this upgraded database directly; do not simply redeploy an older ZIP as a rollback.
 
-This build includes the original app, images, manifest, service worker, and a separate diagnostic page. No restaurant schema changes. It does not guarantee Chrome/Android can generate an installed WebAPK.
+GITHUB + CLOUDFLARE WORKERS
+1. Extract this archive on your computer.
+2. Upload all extracted files into your existing Recolleat GitHub repository ROOT on the main branch. Preserve icon filenames.
+3. Commit. Cloudflare should deploy on the connected branch.
+4. Keep your existing deployment command (root assets):
+   npx wrangler deploy --assets . --compatibility-date 2026-11-19 --name recolleat
+5. Verify https://recolleat.journaled.workers.dev/recolleat-release.txt reports Build 45.
+6. Open/refresh the installed app on Android and confirm the restaurants, calendar, theme unlocks and Quick Log.
+7. Test downloading a JSON backup from Build 45 and verify its file contents before deleting older copies.
+
+The installation manifest, standalone mode, Android icons, service worker, original ranking features, old visit records, two-price spend accounting and accessible free themes remain.
+
+No new accounts, subscriptions, cloud storage or payment processing are used. Online Google Fonts remains optional with local fallback.
+
+IMPORTANT LIMITATIONS
+- New records and local recovery snapshots are stored in the browser. They cannot recover a lost device or cleared browser data. Keep JSON backups.
+- Real Android screen-reader, service-worker upgrade and long-term retention tests remain outstanding.
+- Legacy CSS remains extensive; this build adds a consistent token layer and separates app assets, but does not complete a line-by-line refactor of every legacy style.
+- Browser-based tests used a simulated IndexedDB layer and do not guarantee all devices behave identically.
