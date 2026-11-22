@@ -1,9 +1,9 @@
-BUILD 44 / EXISTING GITHUB ROOT DEPLOYMENT
-1. Export a JSON backup from the existing live app.
-2. Extract the ZIP and upload ALL extracted files and the icons/ folder to the repository ROOT on main. The required new files are recolleat-v44.css and recolleat-v44.js. Do not upload only index.html.
-3. Keep your existing Cloudflare Workers deploy command with --assets .
-4. Wait for Cloudflare deployment, then open /recolleat-release.txt (must say Build 44). Confirm the CSS, JavaScript, icons and manifest return successfully.
-5. Test your existing collection, log a visit, restart the app and export a new backup. Do not clear site data.
-6. Ignore GitHub markdown notes for deployment; the .assetsignore file excludes *.md.
+Recolleat Build 44.2 — Android app install diagnostics
 
-Before updating, export your JSON journal backup. This release includes new files with new names; upload both recolleat-v44.js and recolleat-v44.css and preserve icons. Do not clear site storage. Existing saved colours may revert to Classic if the current saved collection is below the newly introduced milestone.
+1. Export a JSON backup of your Recolleat collection, but DO NOT clear browser site data.
+2. Extract the zip, upload all files to the GitHub REPOSITORY ROOT, on main. Do not upload the zip or an extra folder.
+3. Commit and wait for Cloudflare Workers successful deployment; keep the current deploy command.
+4. On the Android phone open https://recolleat.journaled.workers.dev/install-check.html and select Run checks again.
+5. If any check fails, use Copy report and share the results. If checks pass but Install still fails, the issue may be Chrome's Android WebAPK installation service, not the website files. Do not resort to a shortcut or clear Chrome storage.
+
+This build includes the original app, images, manifest, service worker, and a separate diagnostic page. No restaurant schema changes. It does not guarantee Chrome/Android can generate an installed WebAPK.

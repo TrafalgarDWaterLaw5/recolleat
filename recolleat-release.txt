@@ -1,4 +1,3 @@
-Recolleat mobile · Build 44
+Recolleat mobile · Build 44.2
 22 November 2026
-Retention and reliability: restaurant-count colour milestones at 10/20/30/40; Classic + Black & White always available; themed goal tracker, quick return visits, backup reminders, safer import confirmation, modular CSS/JavaScript, offline caching.
-No accounts or cloud services added.
+Chrome Android installation diagnostics, refreshed app manifest, maskable icon and improved offline asset refresh. All Build 44 features and local stored journal data remain unchanged.
