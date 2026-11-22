@@ -1,25 +1,25 @@
 {
-  "name": "Recolleat · Your Food Passport",
+  "name": "Recolleat · Your Food Journal",
   "short_name": "Recolleat",
-  "description": "An offline-first personal restaurant journal: rank places, collect dishes and log visits.",
-  "id": "./index.html",
-  "start_url": "./index.html",
-  "scope": "./",
+  "description": "A private food journal to rate restaurants, collect dishes, track visits and record food value and spending.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#062b21",
   "theme_color": "#0a603d",
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

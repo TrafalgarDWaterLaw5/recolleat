@@ -1,3 +1,4 @@
-Recolleat mobile · Build 43.1
+Recolleat mobile · Build 44
 22 November 2026
-Fix five-column navigation alignment across portrait and landscape. Bundle Build 41–43 CSS into index.html to ensure styles cannot be missed during GitHub root-level uploads. No data schema changes.
+Retention and reliability: restaurant-count colour milestones at 10/20/30/40; Classic + Black & White always available; themed goal tracker, quick return visits, backup reminders, safer import confirmation, modular CSS/JavaScript, offline caching.
+No accounts or cloud services added.
