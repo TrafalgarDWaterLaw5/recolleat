@@ -1,0 +1,3 @@
+Recolleat mobile · Build 43
+Type scale, responsive landscape layout, passport photo viewer, visit food value vs personal payment, quick food-only ratings, consistent More grid, smaller dishes, empty states, and backup compatibility.
+Base: Build 42.
