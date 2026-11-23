@@ -1,6 +1,6 @@
-/* Recolleat Build 47: retain Android installation assets, refresh the offline cache for the new layout. */
-const CACHE='recolleat-mobile-v47';
-const CORE=['./','./index.html','./recolleat-v45.css','./recolleat-v47.js','./recolleat-v46.css','./recolleat-v47.css'];
+/* Recolleat Build 51: retain Android installation assets, refresh the offline cache for the new layout. */
+const CACHE='recolleat-mobile-v51';
+const CORE=['./','./index.html','./recolleat-v45.css','./recolleat-v51.js','./recolleat-v46.css','./recolleat-v47.css','./recolleat-v51.css'];
 const OPTIONAL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png','./install-check.html','./recolleat-release.txt'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);

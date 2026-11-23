@@ -1,4 +1,4 @@
-Recolleat mobile · Build 47
+Recolleat mobile · Build 51
 23 November 2026
-Find & protect: search restaurant and visit-level dishes, sort by last visited or visit count, jump to months containing visits, accessible keyboard tab navigation, backup freshness detection, and controlled offline app updates.
-Base: Build 46. IndexedDB version 7, same installed-app identity and theme rewards.
+Combined quality release: Home clarity, 20-day Log Again, completed journey removal, revised value/indulgent trait, yearly Wrapped, receipt review and item selection, singular/plural category deduplication, typography and Android installation preservation.
+Database version: 7 (unchanged). Receipt text recognition uses on-device TextDetector when supported; editable pasted text is the fallback. No cloud sync or accounts.
