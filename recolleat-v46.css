@@ -1,0 +1,177 @@
+/* Build 46: clarity layer. Scoped layout corrections, without touching the data model. */
+:root{--r46-gap:12px;--r46-body:14px;--r46-label:12px;--r46-h2:clamp(21px,4.8vw,29px)}
+*,*::before,*::after{box-sizing:border-box}
+:where(.workspace,.reco-pulse,.visit-panel,.profile-page,.dishes-view,.mobile-more-sheet,.passport-dialog){min-width:0}
+:where(button,input,select,textarea){max-width:100%}
+:where(.passport-item,.mobile-r-copy,.month-rest-row,.profile-feature-panel,.reco-pulse-recent-row){min-width:0}
+:where(.feature-heading h2,.visit-toolbar h2,.profile-intro h2){font-size:var(--r46-h2);line-height:1.15}
+/* The journal home and the restaurant collection are distinct destinations. */
+.app.is-journal-home .stats,.app.is-journal-home .controls,.app.is-journal-home #chips,.app.is-journal-home #mainJournalContent,
+.app.is-journal-home .mobile-intro{display:none!important}
+.reco-pulse-metrics[hidden]{display:none!important}
+.reco-pulse{width:100%;max-width:100%;gap:12px}
+.reco-pulse-head{gap:10px}
+.reco-pulse-head h3{font-size:clamp(19px,4.7vw,28px);line-height:1.2;overflow-wrap:normal}
+.reco-pulse-kicker{font-size:11px}
+.reco-pulse-bottom{display:block}
+.reco-pulse-feature{display:none}
+.reco-journey,.reco-pulse-recent,.reco-home-memories{min-width:0}
+.reco-journey h3{font-size:clamp(19px,5vw,27px);line-height:1.18;overflow-wrap:normal}
+.reco-journey-top{gap:10px}
+.reco-journey-top p{font-size:13px!important;line-height:1.5}
+.reco-journey-badges{gap:6px!important;flex-wrap:wrap}
+.reco-journey-badges span{min-width:0;flex:0 0 auto;padding:7px 10px!important}
+.reco-pulse-recent{margin-top:0}
+.reco-pulse-recent-row>span{flex:1 1 auto}
+.reco-pulse-recent-row button{min-width:93px}
+.reco-home-memories{border:1px solid var(--line);border-radius:15px;background:var(--wash);padding:0 13px}
+.reco-home-memories>summary{cursor:pointer;font-weight:800;font-size:14px;list-style:none;min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.reco-home-memories>summary::-webkit-details-marker{display:none}
+.reco-home-memories>summary span{font-size:12px;color:var(--muted);font-weight:600}
+.reco-home-memories[open]{padding-bottom:13px}
+.reco-home-memories[open]>summary span{display:none}
+.reco-memory-heading{margin-top:7px}
+.reco-memory-heading p{display:none}
+.reco-theme-home[hidden]{display:none!important}
+/* Keep content long enough to read but avoid breaking ordinary words in the middle. */
+:where(.mobile-restaurant,.passport-score-strip,.passport-meta,.profile-feature-panel,.reco-pulse,.mobile-backup-panel) :where(p,span,small,strong,b,h2,h3,h4){overflow-wrap:break-word;word-break:normal}
+/* More sheet: one clear recovery action row, and secondary actions on demand. */
+#mobileMoreSheet .mobile-more-links button{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;text-align:center!important;gap:6px!important;min-width:0!important;padding:11px 6px!important;min-height:74px!important}
+#mobileMoreSheet .mobile-more-links .more-help-link{flex-direction:row!important;min-height:54px!important;justify-content:center!important}
+#mobileMoreSheet .mobile-more-links .more-icon{min-width:0!important;font-size:20px!important;line-height:1.25!important}
+#mobileMoreSheet .mobile-more-links .more-label{font-size:13px!important;line-height:1.22!important;font-weight:750!important;overflow-wrap:normal!important;hyphens:none!important}
+#mobileMoreSheet .mobile-more-links .more-label small{font-size:11px!important}
+#mobileMoreSheet .mobile-backup-panel{padding:14px!important;border:1px solid var(--line)!important;border-radius:17px!important;margin-top:14px!important}
+#mobileMoreSheet .mobile-backup-panel .reco-backup-intro{display:grid;gap:3px}
+#mobileMoreSheet .reco-backup-intro small{font-size:12px;color:var(--muted);line-height:1.4}
+#mobileMoreSheet .reco-backup-primary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:11px 0}
+#mobileMoreSheet .reco-backup-primary button{min-width:0;min-height:47px;font-size:13px!important;white-space:normal!important;line-height:1.25!important;padding:9px!important}
+#mobileMoreSheet .reco-backup-extra{margin-top:8px;border-top:1px solid var(--line);padding-top:6px}
+#mobileMoreSheet .reco-backup-extra>summary{font-size:13px;font-weight:760;padding:10px 4px;cursor:pointer}
+#mobileMoreSheet .reco-backup-extra .mobile-backup-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;align-items:stretch!important}
+#mobileMoreSheet .reco-backup-extra .mobile-backup-actions button{width:100%;min-width:0;min-height:46px;line-height:1.25!important;overflow-wrap:normal!important;word-break:normal!important;white-space:normal!important;font-size:12px!important;padding:7px 8px!important}
+#mobileMoreSheet .v42-backup-status{margin:8px 0!important;font-size:12px!important;line-height:1.4!important}
+#mobileMoreSheet .mobile-more-top{position:sticky;top:-17px;z-index:3;background:var(--panel);padding:9px 0 11px;border-bottom:1px solid var(--line)}
+/* Visit edit form: keep the legend from sitting on the field outline. */
+.visit-costs{min-width:0!important;padding:17px 14px 15px!important;margin-top:15px!important}
+.visit-costs legend{padding:0 6px!important;max-width:calc(100% - 22px);font-size:clamp(17px,4.2vw,21px)!important;line-height:1.25!important;white-space:normal!important}
+.visit-costs label,.visit-costs p,.visit-costs input{font-size:14px!important;line-height:1.45!important}
+.visit-costs .field-hint{font-size:13px!important}
+/* Passport pages: the front is the rating card; the reverse carries the detailed journal. */
+#passportDialog .dialog-head{align-items:center;gap:9px}
+#passportDialog .dialog-head>div{min-width:0;flex:1}
+#passportDialog .dialog-head h2{font-size:clamp(19px,5.1vw,29px)!important;line-height:1.15!important;overflow-wrap:normal!important}
+#passportDialog .dialog-head p{font-size:12px!important;line-height:1.3!important}
+#passportDialog .passport-actions{flex-shrink:0;display:flex;gap:5px;align-items:center;flex-wrap:nowrap}
+#passportDialog .passport-actions button{min-height:41px!important;min-width:0;padding:7px 9px!important;font-size:12px!important;white-space:nowrap}
+#passportDialog .passport-actions .x{min-width:38px!important;padding:6px!important}
+#passportDialog .passport-hero-inner h2{font-size:clamp(24px,6vw,37px)!important;line-height:1.1!important;overflow-wrap:break-word!important}
+#passportDialog .passport-score-strip{gap:9px!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;padding:12px!important}
+#passportDialog .passport-score-strip>div{padding:13px!important;min-height:100px;align-content:center;min-width:0}
+#passportDialog .passport-score-strip>div:last-child{grid-column:1/-1;min-height:68px;display:flex!important;justify-content:space-between;align-items:center;gap:10px}
+#passportDialog .passport-score-strip>div:last-child b{font-size:clamp(16px,4vw,23px)!important;word-break:normal!important;overflow-wrap:break-word!important;text-align:right;flex:1}
+#passportDialog .passport-score-strip>div span{font-size:11px!important}
+#passportDialog .passport-score-strip>div b{font-size:clamp(22px,5vw,31px)!important;white-space:normal}
+#passportDialog .reco-passport-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:9px 12px 1px}
+#passportDialog .reco-passport-tabs button{font-size:14px;font-weight:800;min-height:45px!important;background:var(--wash);color:var(--ink);border:1px solid var(--line);border-radius:11px}
+#passportDialog .reco-passport-tabs button.active{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+#passportDialog .reco-passport-page[hidden]{display:none!important}
+#passportDialog .reco-passport-page:not([hidden]){animation:recoPassportPageIn .22s ease both}
+#passportDialog .reco-passport-page .passport-meta{display:flex;flex-wrap:wrap;gap:7px;padding:11px 12px}
+#passportDialog .reco-passport-page .passport-meta>span{max-width:100%;font-size:12px;white-space:normal}
+#passportDialog .passport-accordion>details{overflow:hidden}
+#passportDialog .passport-accordion summary{font-size:15px!important;line-height:1.35!important;min-height:51px;padding:12px 13px!important;display:flex;align-items:center;justify-content:space-between;gap:8px}
+#passportDialog .passport-accordion summary>span{max-width:45%;min-width:0;text-align:right;font-size:12px!important;overflow-wrap:break-word;word-break:normal}
+#passportDialog .passport-item{gap:8px}
+@keyframes recoPassportPageIn{from{opacity:.6;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){#passportDialog .reco-passport-page:not([hidden]){animation:none!important}}
+/* Dishes and monthly wrapped are now distinct pages, not stacked subsections. */
+#dishesView .dish-section-tabs{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important}
+#dishesView .dish-section-tabs button{min-width:0!important;font-size:clamp(11px,2.7vw,14px)!important;line-height:1.2!important;padding:8px 4px!important;white-space:normal!important}
+#dishesView .dish-tab-panel[hidden]{display:none!important}
+#dishPanelCategories{display:grid;gap:12px;min-width:0}
+#dishPanelCategories #dishCategoriesAccordion{margin:0}
+.reco-wrapped-restaurants{margin-top:18px;border-top:1px solid var(--line);padding-top:13px}
+.reco-wrapped-restaurants h3{font-family:Fraunces,Georgia,serif;font-size:19px;margin:0 0 10px}
+#visitView[data-visit-mode="calendar"] .reco-wrapped-restaurants{display:none!important}
+#visitView .visit-layout>aside>h3{display:none!important}
+/* Keep static profile guidance in Help rather than occupying the profile. */
+.profile-roadmap{display:none!important}
+.profile-feature-title p{display:none!important}
+.reco-load-more,.recolleat-show-more{white-space:normal;min-height:45px;font-weight:750}
+/* Mid-sized phones and orientation changes */
+@media(max-width:1100px){
+ .workspace{padding-bottom:calc(98px + env(safe-area-inset-bottom))!important}
+ .workspace>.mobile-top-stack{position:sticky!important;top:0!important;z-index:105!important;pointer-events:none}
+ .workspace>.mobile-top-stack>header{pointer-events:auto}
+ #mobileBottomNav.mobile-bottom-nav{
+   position:fixed!important;top:auto!important;bottom:calc(9px + env(safe-area-inset-bottom))!important;
+   left:12px!important;right:12px!important;transform:none!important;
+   width:calc(100vw - 24px)!important;max-width:none!important;
+   min-height:61px!important;height:64px!important;z-index:109!important;
+   padding:5px!important;border-radius:18px!important;box-shadow:0 8px 35px rgba(0,0,0,.2)!important;
+   pointer-events:auto!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;
+ }
+ #mobileBottomNav.mobile-bottom-nav>button{height:52px!important;min-height:52px!important;flex-direction:column!important;gap:3px!important}
+ #mobileBottomNav .m-nav-label{font-size:clamp(10px,2.5vw,12px)!important;line-height:1.1!important;width:100%!important;white-space:nowrap!important}
+ #mobileBottomNav .m-nav-svg{width:21px!important;height:21px!important}
+ .mobile-more-sheet{z-index:1250!important;max-height:calc(100dvh - 24px)!important}
+ .mobile-more-backdrop{z-index:1200!important}
+}
+@media(max-width:640px){
+ .reco-pulse{padding:14px!important;gap:12px!important}
+ .reco-pulse-head{display:grid!important;gap:12px!important}
+ .reco-pulse-head p{font-size:13px!important}
+ .reco-pulse-actions{grid-template-columns:1fr 1fr!important;gap:9px!important}
+ .reco-journey-top{display:grid!important;gap:10px!important}
+ .reco-journey-top button{display:none!important}
+ .reco-journey-top h3{font-size:clamp(19px,4.8vw,26px)!important}
+ .reco-journey-badges span{padding:8px 9px!important;font-size:13px!important}
+ .reco-pulse-recent-row{align-items:center;gap:7px}
+ .reco-pulse-recent-row strong{font-size:13px!important}
+ .reco-pulse-recent-row button{min-width:90px;max-width:114px;font-size:12px!important;padding:8px!important}
+ .mobile-intro p,.feature-heading p{display:none!important}
+ #mobileMoreSheet .mobile-more-links{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+ #mobileMoreSheet .mobile-more-links .more-help-link{grid-column:1/-1}
+ #mobileMoreSheet .mobile-more-links button{min-height:70px!important}
+ #passportDialog{width:calc(100vw - 16px)!important;max-width:calc(100vw - 16px)!important}
+ #passportDialog .dialog-head{padding:12px 9px!important}
+ #passportDialog .dialog-head p{display:none!important}
+ #passportDialog .passport-hero{min-height:190px!important}
+ #passportDialog .passport-hero-score strong{font-size:42px!important}
+ #passportDialog .passport-meta{gap:6px!important}
+}
+@media(max-width:360px){
+ #mobileMoreSheet .mobile-more-links .more-label{font-size:12px!important}
+ #mobileBottomNav .m-nav-label{font-size:10px!important}
+ #passportDialog .dialog-head h2{font-size:18px!important}
+ #passportDialog .passport-actions button{font-size:11px!important;padding:6px!important}
+ #dishesView .dish-section-tabs button{font-size:10.5px!important}
+}
+@media(orientation:landscape) and (max-height:520px) and (max-width:1100px){
+ #mobileBottomNav.mobile-bottom-nav{height:50px!important;min-height:50px!important;bottom:calc(3px + env(safe-area-inset-bottom))!important}
+ #mobileBottomNav.mobile-bottom-nav>button{height:40px!important;min-height:40px!important;flex-direction:row!important;gap:6px!important}
+ #mobileBottomNav .m-nav-label{width:auto!important;font-size:11px!important}
+ #mobileBottomNav .m-nav-svg{width:19px!important;height:19px!important}
+ .workspace{padding-bottom:calc(65px + env(safe-area-inset-bottom))!important}
+ .reco-pulse-head{display:flex!important}
+ #mobileMoreSheet{max-height:calc(100dvh - 8px)!important}
+ #passportDialog{max-height:calc(100dvh - 10px)!important}
+}
+
+/* Keep the last row as Profile + Privacy, as in the established menu. */
+#mobileMoreSheet .mobile-more-links [data-more-view="dishes"]{grid-column:1/-1!important;min-height:54px!important;flex-direction:row!important;gap:10px!important}
+.reco-home-memories[hidden]{display:none!important}
+/* Consistent contrast for secondary tabs (important on dark theme). */
+#dishesView .dish-section-tabs button,#visitView .visit-mode-tabs button{color:var(--ink)!important;opacity:1!important;text-shadow:none!important}
+#dishesView .dish-section-tabs button:not(.active),#visitView .visit-mode-tabs button:not(.active){background:var(--wash)!important;color:var(--ink)!important;opacity:1!important}
+#dishesView .dish-section-tabs button.active,#visitView .visit-mode-tabs button.active{background:var(--accent)!important;color:var(--accent-ink)!important;opacity:1!important}
+#dishesView .dish-section-tabs button:focus-visible,#visitView .visit-mode-tabs button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+#dishPanelCategories .stamp-explainer{display:none!important}
+@media(max-width:640px){
+ #dishesView .feature-heading .feature-kicker{display:none!important}
+ #dishesView .feature-heading .feature-mark{opacity:.35}
+ #dishesView .hof-head p,#dishesView .dish-category-manager-header p{display:none!important}
+ #passportDialog:has(#passportJournalPage:not([hidden])) .passport-hero{min-height:140px!important}
+ #passportDialog:has(#passportJournalPage:not([hidden])) .passport-hero-score{display:none!important}
+}

@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <title>Recolleat · Your Food Journal</title>
-<meta name="recolleat-build" content="45"/>
+<meta name="recolleat-build" content="46"/>
 <script>try{if(localStorage.getItem("recolleat-opened-v43"))document.documentElement.classList.add("recolleat-returning")}catch(e){}</script>
 <script>/* Use extra bottom clearance only when the hosting platform inserts its own banner. */
 if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.site')) {
@@ -13,8 +13,8 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 }
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..900&display=swap"/>
-<link rel="stylesheet" href="./recolleat-v45.css"/>
-<link href="./manifest.webmanifest?v=45" rel="manifest"/><link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="default"/><meta name="apple-mobile-web-app-title" content="Recolleat"/><meta content="#0b5b37" name="theme-color"/>
+<link rel="stylesheet" href="./recolleat-v45.css"/><link rel="stylesheet" href="./recolleat-v46.css"/><link rel="stylesheet" href="./recolleat-v47.css"/>
+<link href="./manifest.webmanifest?v=47" rel="manifest"/><link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="default"/><meta name="apple-mobile-web-app-title" content="Recolleat"/><meta content="#0b5b37" name="theme-color"/>
 </head>
 <body>
 <div id="recolleatSplash" class="recolleat-splash" role="status" aria-live="polite" aria-label="Opening Recolleat">
@@ -33,7 +33,8 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 </div>
 <div class="sidebar-section-heading">INDEX / EXPLORE</div>
 <nav aria-label="Main sections" class="sidebar-nav">
-<button class="active" data-view="table" title="Table" type="button"><span aria-hidden="true" class="sidebar-icon"><svg viewbox="0 0 24 24"><rect height="16" rx="2" width="18" x="3" y="4"></rect><path d="M3 10h18M9 10v10M15 10v10"></path></svg></span><span class="sidebar-text">Grand List</span></button>
+<button class="active" data-view="home" title="Home" type="button"><span aria-hidden="true" class="sidebar-icon">⌂</span><span class="sidebar-text">Home</span></button>
+<button data-view="table" title="Collection" type="button"><span aria-hidden="true" class="sidebar-icon"><svg viewbox="0 0 24 24"><rect height="16" rx="2" width="18" x="3" y="4"></rect><path d="M3 10h18M9 10v10M15 10v10"></path></svg></span><span class="sidebar-text">Collection</span></button>
 <button data-view="cards" title="Cards" type="button"><span aria-hidden="true" class="sidebar-icon"><svg viewbox="0 0 24 24"><rect height="7" rx="1.5" width="7" x="3" y="3"></rect><rect height="7" rx="1.5" width="7" x="14" y="3"></rect><rect height="7" rx="1.5" width="7" x="3" y="14"></rect><rect height="7" rx="1.5" width="7" x="14" y="14"></rect></svg></span><span class="sidebar-text">Gallery</span></button>
 <button data-view="map" title="Map" type="button"><span aria-hidden="true" class="sidebar-icon"><svg viewbox="0 0 24 24"><path d="M9 18l-6 3V6l6-3m0 15 6 3m-6-3V3m6 18 6-3V3l-6 3m0 15V6"></path></svg></span><span class="sidebar-text">Places</span></button>
 <button data-view="cuisines" title="Cuisine" type="button"><span aria-hidden="true" class="sidebar-icon"><svg viewbox="0 0 24 24"><path d="m12 3 8 9-8 9-8-9 8-9Z"></path><path d="M12 7v10M7 12h10"></path></svg></span><span class="sidebar-text">Cuisine Rankings</span></button>
@@ -82,22 +83,23 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <button class="quick-top-btn" id="quickAddBtn" type="button" hidden aria-hidden="true" tabindex="-1">Quick Add</button><button class="primary" id="addBtn" aria-label="Quickly log a meal or restaurant">+ Quick Log</button>
 </div>
 </header>
-<nav aria-label="Main navigation" class="mobile-bottom-nav" id="mobileBottomNav"><button aria-label="Home" class="active" data-mobile-view="table" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg><span class="m-nav-label">Home</span></button><button aria-label="Places" data-mobile-view="map" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"></path><circle cx="12" cy="10" r="2.5"></circle></svg><span class="m-nav-label">Places</span></button><button aria-label="Dishes" data-mobile-view="dishes" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><path d="M4 2v7a3 3 0 0 0 6 0V2M7 2v20M17 22V2c-4 4-5 8-5 12h5"></path></svg><span class="m-nav-label">Dishes</span></button><button aria-label="Calendar" data-mobile-view="visits" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M8 17h4"/></svg><span class="m-nav-label">Calendar</span></button><button aria-label="More" id="mobileMoreBtn" type="button" aria-expanded="false" aria-controls="mobileMoreSheet"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"></path></svg><span class="m-nav-label">More</span></button></nav>
+
 </div>
+<nav aria-label="Main navigation" class="mobile-bottom-nav" id="mobileBottomNav"><button aria-label="Home" class="active" data-mobile-view="home" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg><span class="m-nav-label">Home</span></button><button aria-label="Places" data-mobile-view="map" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"></path><circle cx="12" cy="10" r="2.5"></circle></svg><span class="m-nav-label">Places</span></button><button aria-label="Collection" data-mobile-view="table" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 9h10M7 13h10M7 17h6"></path></svg><span class="m-nav-label">Collection</span></button><button aria-label="Calendar" data-mobile-view="visits" type="button"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M8 17h4"/></svg><span class="m-nav-label">Calendar</span></button><button aria-label="More" id="mobileMoreBtn" type="button" aria-expanded="false" aria-controls="mobileMoreSheet"><svg aria-hidden="true" class="m-nav-svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85" viewbox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"></path></svg><span class="m-nav-label">More</span></button></nav>
 
 <section class="mobile-intro" id="mobileIntro"><div><span class="mobile-eyebrow">YOUR PERSONAL FOOD JOURNAL</span><h2 id="mobileSectionTitle">The Collection</h2><p id="mobileSectionSubtitle">Your restaurants, ranked your way.</p></div><div style="display:flex;align-items:flex-end;flex-direction:column;gap:5px"><span class="mobile-collection-badge" id="mobileCurrentCount">0 saved</span></div></section>
 
 <section class="reco-pulse" id="recoPulse" aria-label="Your journal at a glance" hidden>
   <div class="reco-pulse-head">
-    <div><span class="reco-pulse-kicker">YOUR FOOD JOURNAL / THIS MONTH</span>
+    <div><span class="reco-pulse-kicker">YOUR FOOD JOURNAL</span>
       <h3 id="recoPulseHeadline">Your collection, in progress</h3>
       <p id="recoPulseIntro">Log a meal or open a familiar favourite.</p>
     </div>
     <div class="reco-pulse-actions"><button type="button" class="primary" id="recoPulseLog">+ Quick Log</button><button type="button" id="recoPulseAdd">New restaurant</button></div>
   </div>
-  <div id="recoPulseMetrics" class="reco-pulse-metrics" aria-label="Personal journal statistics"></div>
+  <div id="recoPulseMetrics" class="reco-pulse-metrics" aria-label="Personal journal statistics" hidden></div>
   <div id="recoJourney" class="reco-journey" aria-live="polite"></div>
-  <div id="recoMemoryFeed" class="reco-memory-feed" aria-label="Your food memories"></div>
+  <details class="reco-home-memories"><summary>Meals worth remembering <span>See your memories</span></summary><div id="recoMemoryFeed" class="reco-memory-feed" aria-label="Your food memories"></div></details>
   <div class="reco-pulse-bottom"><details class="reco-pulse-feature" id="recoPulseFeature"></details><div class="reco-pulse-recent"><span>LOG AGAIN IN ONE TAP</span><div id="recoPulseRecent"></div></div></div>
   <div class="reco-theme-home" id="recoThemeHome" aria-label="Next colour unlock goal"><div class="reco-theme-home-head"><div><span class="reco-theme-home-kicker">YOUR NEXT COLOUR</span><strong id="recoThemeHomeTitle">Plum &amp; Champagne</strong><small id="recoThemeHomeDescription">Log 10 restaurants to unlock a new look.</small></div><button type="button" id="recoThemeHomeOpen">Explore themes</button></div><div class="reco-theme-home-track"><div id="recoThemeHomeFill"></div></div></div>
   <div class="reco-pulse-backup" id="recoPulseBackup" hidden><span id="recoPulseBackupText"></span><button type="button" id="recoPulseExport">Export backup</button></div>
@@ -108,7 +110,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <div class="stat"><span id="statCuisineLabel">Top cuisine</span><strong id="statCuisine">—</strong><small id="statCuisineSub">by average grand-list position</small></div>
 <div class="stat"><span>Listed price</span><strong id="statSpend">—</strong><small>average estimate per person</small></div>
 </section>
-<section class="controls"><div class="search-wrap"><input aria-label="Search your restaurant collection" class="search" id="search" type="search" enterkeyhint="search" autocomplete="off" placeholder="Search restaurants or cuisines…"/><button id="v41ClearSearch" type="button" aria-label="Clear search" hidden>×</button></div><div class="grand-list-tools" id="grandListTools"><span class="list-tools-caption">GRAND LIST CONTROLS</span> <div class="menu-wrap">
+<section class="controls"><div class="search-wrap"><input aria-label="Search your restaurant collection" class="search" id="search" type="search" enterkeyhint="search" autocomplete="off" placeholder="Find restaurants, dishes or visit notes…"/><button id="v41ClearSearch" type="button" aria-label="Clear search" hidden>×</button></div><div class="grand-list-tools" id="grandListTools"><span class="list-tools-caption">GRAND LIST CONTROLS</span> <div class="menu-wrap">
 <button id="filterBtn" title="Filter"><span aria-hidden="true" class="sidebar-icon"><svg viewbox="0 0 24 24"><path d="M4 5h16M7 12h10M10 19h4"></path></svg></span><span class="sidebar-text">Filter <span id="filterCount"></span></span></button>
 <div class="popover" id="filterMenu">
 <div class="popover-title">Filters</div>
@@ -138,7 +140,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <div class="popover" id="sortMenu">
 <div class="popover-title">Sort</div>
 <label>Property<select id="sortProperty">
-<option value="grandRank">Overall rank</option><option value="overallScore">Overall score</option><option value="updatedAt">Last updated</option><option value="foodScore">Food rating</option>
+<option value="grandRank">Overall rank</option><option value="overallScore">Overall score</option><option value="updatedAt">Last updated</option><option value="lastVisited">Last visited</option><option value="visitCount">Number of visits</option><option value="foodScore">Food rating</option>
 <option value="valueScore">Value for money</option><option value="restaurant">Restaurant</option><option value="pp">Price / person</option>
 <option value="location">Location</option>
 <option value="cuisine">Cuisine</option><option value="service">Service</option>
@@ -152,7 +154,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <button data-view="graph" id="listGraphTab" title="Show Patterns &amp; Trends graph" type="button"><span aria-hidden="true" class="sidebar-icon"><svg viewbox="0 0 24 24"><path d="M4 20V5M4 20h17M7 15l5-6 4 3 5-8"></path></svg></span>Graph</button>
 </div>
 </div></section><div class="mobile-quick-controls" id="mobileControlMount"></div>
-<div class="chips" id="chips"></div>
+<div class="chips" id="chips"></div><div class="reco-search-result-status" id="recoSearchResultStatus" role="status" aria-live="polite" hidden></div>
 <main id="mainJournalContent" tabindex="-1"><section aria-label="Restaurant feed" id="mobileHome"><div class="mobile-list-header"><h3>Grand list</h3><span id="mobileResultCount">0 restaurants</span></div>
 <section id="v41Welcome" class="v41-onboarding" aria-labelledby="v41WelcomeTitle" hidden>
   <span class="v41-eyebrow">START YOUR COLLECTION</span>
@@ -288,10 +290,11 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 
 </section>
 <section class="dishes-view" id="dishesView">
-<div class="feature-heading"><div><span class="feature-kicker">RECOLLEAT / COLLECTIBLE ARCHIVE</span><h2>Your Dishes</h2><p>Explore your signature exhibition, rankings and category stamp books.</p></div><span class="feature-mark">★</span></div>
+<div class="feature-heading"><div><span class="feature-kicker">RECOLLEAT / COLLECTIBLE ARCHIVE</span><h2>Your Dishes</h2></div><span class="feature-mark">★</span></div>
 <div class="dish-section-tabs" role="tablist" aria-label="Dishes sections">
 <button type="button" class="active" id="dishTabHall" role="tab" aria-controls="dishPanelHall" aria-selected="true" data-dish-panel="hall">Hall of Flavour</button>
 <button type="button" id="dishTabSignature" role="tab" aria-controls="dnaPanelSignature" aria-selected="false" data-dish-panel="signature">Signature Dishes</button>
+<button type="button" id="dishTabCategories" role="tab" aria-controls="dishPanelCategories" aria-selected="false" data-dish-panel="categories">Category Books</button>
 </div>
 <section id="dishPanelHall" class="dish-tab-panel" role="tabpanel" aria-labelledby="dishTabHall">
 <div class="feature-panel dish-toolbar">
@@ -311,7 +314,10 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <div class="reco-accordion-body" id="hallOfFlavour"></div>
 <button id="toggleDishRanking" class="recolleat-show-more" type="button" aria-expanded="false">Show every dish in the ranking</button>
 </details>
-<details class="reco-accordion dish-category-accordion" id="dishCategoriesAccordion">
+
+<div class="dish-stats dish-stats-bottom" id="dishStats" aria-label="Dish collection statistics"></div>
+</section><!-- dishPanelHall -->
+<section id="dishPanelCategories" class="dish-tab-panel" role="tabpanel" aria-labelledby="dishTabCategories" hidden><details class="reco-accordion dish-category-accordion" id="dishCategoriesAccordion" open>
 <summary class="reco-accordion-toggle"><span class="reco-acc-mark">▣</span><span class="reco-acc-title"><strong>Category stamp books</strong><small>Open a collection and flip through every dish</small></span><span class="reco-acc-count" id="dishCategorySectionCount">Collections</span><span class="reco-acc-chevron">⌄</span></summary>
 <div class="reco-accordion-body">
 <div class="stamp-explainer"><span class="stamp-explainer-icon">📖</span><div><strong>Choose a collection to open its stamp book</strong><p>Each category is its own flip-through album with dish photographs, ratings and restaurant passports.</p></div></div>
@@ -321,12 +327,10 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <div class="category-catalog" id="dishCategoryCatalog"></div>
 </div>
 </div>
-</details>
-<div class="dish-stats dish-stats-bottom" id="dishStats" aria-label="Dish collection statistics"></div>
-</section><!-- dishPanelHall -->
+</details></section>
 </section>
 <section class="dna-view" id="dnaView">
-<div class="feature-heading"><div><span class="feature-kicker">RECOLLEAT / YOUR PALATE</span><h2>Food DNA</h2><p>Your signature dishes, collected like artworks.</p></div><span class="feature-mark">DNA</span></div>
+<div class="feature-heading"><div><span class="feature-kicker">RECOLLEAT / YOUR PALATE</span><h2>Food DNA</h2></div><span class="feature-mark">DNA</span></div>
 <div class="palate-nav legacy-dna-nav" role="tablist" aria-label="Dishes sections">
   <button type="button" class="active" role="tab" id="dnaTabCode" aria-controls="dnaPanelCode" aria-selected="true" data-dna-tab="code">Palate Code</button>
   <button type="button" role="tab" id="dnaTabSignature" aria-controls="dnaPanelSignature" aria-selected="false" data-dna-tab="signature">Signature Dishes</button>
@@ -351,13 +355,13 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <section class="list-main" id="listMain"></section>
 </section>
 <section class="visit-view" id="visitView" data-visit-mode="calendar">
-<div class="visit-mode-tabs" role="tablist" aria-label="Visit history sections"><button id="visitCalendarTab" class="active" type="button" role="tab" aria-selected="true">▦ Calendar</button><button id="visitWrappedTab" type="button" role="tab" aria-selected="false">✧ Monthly Wrapped</button></div>
+<div class="visit-mode-tabs" role="tablist" aria-label="Visit history sections"><button id="visitCalendarTab" class="active" type="button" role="tab" tabindex="0" aria-selected="true">▦ Calendar</button><button id="visitWrappedTab" type="button" role="tab" tabindex="-1" aria-selected="false">✧ Monthly Wrapped</button></div>
 <div class="visit-layout">
 <section class="visit-panel">
 <div class="visit-toolbar">
 <div>
 <h2>Visit history</h2>
-<div class="muted">Log the value of your food separately from what you personally paid.</div>
+
 </div>
 <button class="primary" id="logVisitBtn">+ Log visit</button>
 </div>
@@ -365,7 +369,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <button id="prevMonthBtn">←</button>
 <strong id="calendarMonthLabel"></strong>
 <button id="nextMonthBtn">→</button>
-<button id="todayMonthBtn">Today</button><input aria-label="Jump to calendar month" title="Jump to month" id="calendarMonthJump" type="month">
+<button id="todayMonthBtn">Today</button><input aria-label="Jump to calendar month" title="Jump to month" id="calendarMonthJump" type="month"><select id="recoVisitedMonthSelect" aria-label="Jump to a month with logged visits"><option value="">Months with visits</option></select>
 </div>
 <div class="calendar-grid" id="calendarGrid"></div>
 </section>
@@ -377,13 +381,12 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <div><span>You paid</span><b id="monthSpendTotal">—</b><small id="monthPersonalCoverage">No amounts logged</small></div>
 <div><span>Treated meals</span><b id="monthTreatedCount">0</b><small>Paid for by someone else</small></div>
 </div>
-<h3 style="margin:0 0 8px">Restaurants this month</h3>
-<div class="month-restaurants" id="monthRestaurants"></div>
+
 <details class="calendar-spend-details"><summary>Your spending trend <small>Last 12 months · personally paid</small></summary><div class="spend-chart" id="spendChart"></div></details>
 <div class="reco-finance-card" id="recoFinance" aria-label="Your annual meal and payment insights"><div class="reco-finance-title"><h3>Your spending, clearly separated</h3><label>Year <select id="recoFinanceYear" aria-label="Year for financial insights"></select></label></div><div id="recoFinanceContent"></div></div>
 </aside>
 </div>
-<section class="visit-panel wrapped-only-panel" id="wrappedStoryPanel" aria-label="Monthly Wrapped story"><div class="monthly-wrapped" id="wrappedReport"></div></section>
+<section class="visit-panel wrapped-only-panel" id="wrappedStoryPanel" aria-label="Monthly Wrapped story"><div class="monthly-wrapped" id="wrappedReport"></div><div class="reco-wrapped-restaurants"><h3>Restaurants visited this month</h3><div class="month-restaurants" id="monthRestaurants"></div></div></section>
 <section class="visit-panel calendar-selected-panel" id="calendarSelectedPanel" style="margin-top:12px">
 <div class="calendar-visit-heading"><h3 id="calendarSelectionLabel">Visits on selected date</h3><button id="calendarShowMonth" type="button" aria-pressed="false">All month</button></div>
 <div class="visit-log" id="visitLog"></div>
@@ -410,7 +413,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <div class="profile-save-row"><button class="primary" type="submit">Save profile</button><span aria-live="polite" id="profileSaveStatus" role="status"></span></div></form>
 </details>
 </div>
-<section class="profile-feature-panel" id="profilePersonaHome" aria-label="Your Palate Code"><div class="profile-feature-title"><span>THE FOOD THAT MAKES YOU</span><h3>Your Palate Identity</h3><p>Four dimensions from your rated dishes. Data-derived, not editable.</p></div></section>
+<section class="profile-feature-panel" id="profilePersonaHome" aria-label="Your Palate Code"><div class="profile-feature-title"><span>THE FOOD THAT MAKES YOU</span><h3>Your Palate Identity</h3></div></section>
 <details class="profile-stamps-feature" id="profileStampsHome"><summary><span><b>Culinary Stamps</b><small>Eight achievement collections · tap to explore</small></span><span aria-hidden="true">⌄</span></summary></details>
 <div class="profile-stats-header"><div><div class="profile-kicker">YOUR RECOLLEAT STORY</div><h3>At a glance</h3></div><span>LIVE COLLECTION STATISTICS</span></div>
 <div class="profile-stats-grid" id="profileStats"></div>
@@ -420,18 +423,21 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <section class="help-page" id="helpView" aria-label="Help and frequently asked questions" style="display:none">
   <div class="help-hero"><span class="privacy-eyebrow">YOUR RECOLLEAT GUIDE</span><h2>Help &amp; FAQs</h2><p>A quick guide to every main feature. Recolleat is a private food journal first: no account is required.</p><a class="help-feedback" href="https://docs.google.com/forms/d/e/1FAIpQLSc80f1pmRXgORQmy2X1wp_xggGetlXv198ZbsZZzsvX1XhyzA/viewform?usp=publish-editor" target="_blank" rel="noopener noreferrer">Send feedback ↗</a></div>
   <div class="help-guides">
-    <article><span>01</span><h3>Home · Grand List</h3><p>Your restaurants ranked by their scores. Use Search, Sort and Filter to narrow the collection. Table and Graph compare the same entries.</p></article>
-    <article><span>02</span><h3>Places</h3><p>Choose a location bubble, then tap a restaurant to open its passport. Enter restaurant names and locations manually in the editor.</p></article>
-    <article><span>03</span><h3>Dishes</h3><p>Rate dishes out of ten, explore Hall of Flavour and open category stamp books. The signature gallery highlights your favourites.</p></article>
-    <article><span>04</span><h3>Dishes</h3><p>Use the Hall of Flavour and Signature Dishes tabs. Your Palate Code and Culinary Stamps live in Profile.</p></article>
-    <article><span>05</span><h3>Destination Hub</h3><p>Use the Hub button by the Recolleat logo to open Home, Places, Dishes, Calendar and More. Profile and additional tools are available from More. Colours and backups are accessible from the hub too.</p></article>
-    <article><span>06</span><h3>Add or edit restaurants</h3><p>Tap + to enter a restaurant, photos, food, value, service, spending, dishes and visits. Dates are optional. Keep a regular exported backup.</p></article>
+    <article><span>01</span><h3>Home</h3><p>Log another meal, track collection milestones, and revisit food memories.</p></article>
+    <article><span>02</span><h3>Collection</h3><p>Browse, search and rank your saved restaurants. Open passports to review the details.</p></article>
+    <article><span>03</span><h3>Dishes</h3><p>Find Hall of Flavour, Signature Dishes and Category Books in More.</p></article>
+    <article><span>04</span><h3>Calendar</h3><p>Log dated meals and view monthly restaurant summaries in Monthly Wrapped.</p></article>
+    <article><span>05</span><h3>More</h3><p>Manage colour themes, backups, profile and advanced collection tools.</p></article>
   </div>
   <h3 class="help-faq-title">Frequently asked questions</h3>
   <div class="help-faq">
     <details><summary>Does Recolleat need an account or internet connection?</summary><p>No account is needed. Saved entries work locally on this device. Initial installation and updates require internet access; your saved journal works offline.</p></details>
     <details><summary>How is a restaurant's overall score calculated?</summary><p>Food contributes 60%, value 20% and service 20%. The Grand List follows this score; Ranking Laboratory lets you test alternative weights without changing your permanent rankings.</p></details>
     <details><summary>Where is my Palate Code, and why are some letters unknown?</summary><p>Open My Profile from the Hub. Your four letters come from rated dishes and restaurant context. Small samples, limited price variation and near-neutral patterns leave a letter as ? instead of guessing. The maturity bar measures data coverage, not statistical certainty. The 16 possible personas are explained under World of Personas.</p></details>
+
+    <details><summary>What does Palate Code measure?</summary><p>Palate Code uses your rated dishes and, for its spending dimension, the recorded cost per person or food value of your visits. The first dimensions describe cuisine breadth and repeated dish names; the others compare food ratings with price and measure rating generosity. It does not use a questionnaire or treat the number of visits as evidence of personality. Ratings from the same restaurant are averaged so a long menu does not dominate. Near-neutral relationships can remain unassigned; the code may evolve as you add meals.</p></details>
+    <details><summary>Why is my Value-first / Indulgent letter still unknown?</summary><p>A large restaurant collection is not automatically a large sample of priced meals. This trait needs ten distinct restaurants that have rated dishes and either a recorded price per person or eligible food value on a visit, plus varied prices. If enough information exists but higher prices are not associated with clearly higher or lower ratings, the result is balanced rather than unknown. Missing prices must never be guessed.</p></details>
+    <details><summary>How do I view the two sides of a restaurant passport?</summary><p>Open any restaurant card, then switch between Ratings and Journal. On a phone you can also swipe horizontally over the passport page. The Journal side contains visit history, notes, dishes, photographs and location.</p></details>
     <details><summary>How do I record a visit without knowing the date?</summary><p>Open the restaurant editor and add a visit with the date left blank. It counts as logged, but is excluded from month-specific charts.</p></details>
     <details><summary>Why do I see “10+” visits?</summary><p>Restaurant visit badges show 10+ after ten visits. Recolleat retains the exact number internally. Your profile only counts actual logged visit records.</p></details>
     <details><summary>How do Quick Add and drafts work?</summary><p>Tap Add, then Quick Add, to save the restaurant name, cuisine, location and optionally a food score. Drafts are private on this device and stay out of rankings until you finish the three-step editor. Drafts are included in new JSON backups.</p></details>
@@ -439,7 +445,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
     <details><summary>How do I move my journal to another phone?</summary><p>Export a JSON backup from the Hub, install Recolleat at the same website address on the new device, then import the backup. Changes do not synchronise automatically.</p></details>
     <details><summary>How do I install Recolleat on my phone?</summary><p>On iPhone, open the website in Safari and use Share → Add to Home Screen. On other phones, open the site in Chrome and choose Add to Home screen or Install app. Open once while connected to the internet to initialise offline caching.</p></details>
     <details><summary>Where are my photos and restaurant details stored?</summary><p>In browser storage on this device, not in a Recolleat cloud account. Clearing site data or removing the app can delete them, so export backups regularly.</p></details>
-    <details><summary>How do I unlock more colour themes?</summary><p>Open More → Colour themes. Recolleat Classic and Black &amp; White are available immediately. Plum &amp; Champagne unlocks at 10 saved restaurants, Electric Citrus at 20, Crimson Red at 30 and Golden Hour at 40. These are different saved restaurants, not visits, dishes or unfinished drafts. Your existing or imported saved restaurants count. Deleting entries below a threshold locks the corresponding theme again. All milestones stay on this device with your collection; no account is needed.</p></details>
+    <details><summary>How do I unlock more colour themes?</summary><p>Open More → Colour themes. Recolleat Classic and Black &amp; White are available immediately. Plum &amp; Champagne unlocks at 10 saved restaurants, Electric Citrus at 20, Crimson Red at 30 and Golden Hour at 40. These are different saved restaurants, not visits, dishes or unfinished drafts. Your existing or imported saved restaurants count. Earned theme rewards are permanent, even after deleting an entry. All milestones stay on this device with your collection; no account is needed.</p></details>
     <details><summary>Can I change the colours and switch dark mode?</summary><p>Open More → Colour themes to view the unlock progress and choose an available palette. Light and dark mode are available for every unlocked theme, including both starting themes.</p></details>
     <details><summary>How do I send feedback or report a bug?</summary><p>Use the Send feedback link at the top of this page. Describe the screen and steps to reproduce; screenshots help.</p></details>
   </div>
@@ -583,7 +589,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 <small>Start typing instead of scrolling through every place.</small>
 </label>
 <label>Date <small>(optional — leave blank if you do not remember)</small><input id="visitDate" type="date"/></label>
-<fieldset class="visit-costs"><legend>What was your meal worth?</legend><p class="field-hint">Record the value of food and drink you personally had, not the whole table’s bill. Both amounts are optional.</p>
+<fieldset class="visit-costs"><legend>Meal value and payment</legend><p class="field-hint">Record the value of food and drink you personally had, not the whole table’s bill. Both amounts are optional.</p>
 <div class="visit-price-fields"><label>Value of your food (£)<input id="visitFoodValue" min="0" max="10000000" inputmode="decimal" placeholder="e.g. 42.50" step="0.01" type="number"/></label>
 <label>What you paid (£)<input id="visitSpend" min="0" max="10000000" inputmode="decimal" placeholder="e.g. 0.00" step="0.01" type="number"/></label></div>
 <label class="visit-treat-toggle" for="visitPaidFor"><input id="visitPaidFor" type="checkbox"/><span><b>Someone paid for my meal</b><small>For example, a family meal. Sets your own spend to £0.</small></span></label>
@@ -608,7 +614,7 @@ if (location.hostname === 'tiiny.site' || location.hostname.endsWith('.tiiny.sit
 </div>
 </dialog>
 <dialog class="lightbox" id="lightbox" aria-label="Enlarged restaurant photograph"><button type="button" class="lightbox-close" id="lightboxClose" aria-label="Close enlarged photograph">×</button><img alt="Enlarged restaurant photograph" id="lightboxImg"/></dialog>
-<script src="./recolleat-v45.js" defer></script>
-<div class="mobile-more-backdrop" id="mobileMoreBackdrop" aria-hidden="true"></div><section aria-hidden="true" aria-label="More Recolleat sections" aria-modal="true" class="mobile-more-sheet" id="mobileMoreSheet" role="dialog" inert><div class="mobile-more-handle"></div><div class="mobile-more-top"><div><span class="mobile-eyebrow">DISCOVER MORE</span><h2 id="v42MoreHeading">Explore Recolleat</h2></div><button aria-label="Close menu" id="mobileMoreClose" type="button">×</button></div><div class="mobile-more-links"><button class="more-help-link" data-more-view="help" type="button"><span class="more-icon" aria-hidden="true">?</span><span class="more-label">Help &amp; FAQs <small>· Start here</small></span></button><button data-more-view="cards" type="button"><span class="more-icon" aria-hidden="true">▧</span><span class="more-label">Restaurant cards</span></button><button data-more-view="cuisines" type="button"><span class="more-icon" aria-hidden="true">♛</span><span class="more-label">Cuisine podium</span></button><button data-more-view="lab" type="button"><span class="more-icon" aria-hidden="true">⚖</span><span class="more-label">Ranking Laboratory</span></button><button data-more-view="lists" type="button"><span class="more-icon" aria-hidden="true">☷</span><span class="more-label">Saved lists</span></button><button data-more-view="profile" type="button"><span class="more-icon" aria-hidden="true">◉</span><span class="more-label">My Profile</span></button><button data-more-view="privacy" type="button"><span class="more-icon" aria-hidden="true">♧</span><span class="more-label">Privacy &amp; Safety</span></button></div><div class="mobile-theme-panel" id="mobileThemeMount"></div><div class="mobile-backup-panel"><b>Keep your memories safe</b><p>Your journal is stored on this device, not automatically synced to other devices. Export a backup regularly and import the same file on another device.</p><p id="v42BackupStatus" class="v42-backup-status" role="status">No export recorded on this device.</p><div class="mobile-backup-actions"><button id="mobileExport" type="button">↓ Export backup</button><button id="mobileImport" type="button">↑ Import backup</button><button id="v42VerifyBackup" type="button">✓ Verify a backup</button><button id="v44ProtectStorage" type="button">Protect device storage</button><button id="recoRecoveryOpen" type="button">Last recovery point</button><button id="recoOptimiseMedia" type="button">Optimise photo storage</button><input type="file" id="v42VerifyFile" accept=".json,application/json" hidden></div></div><p class="recolleat-build-indicator" style="margin:12px 0 0;font-size:11px;text-align:center;color:var(--muted)">Recolleat Build 45 · Memory & journal release</p><div class="mobile-install-hint"><b>Install for offline use:</b> open the hosted HTTPS website in Safari on iPhone (Share → Add to Home Screen), or Chrome on other phones (Install app or Add to Home screen). Opening a standalone HTML file is not the same as installing the web app. <a href="./install-check.html" style="display:inline-block;padding:8px 0;color:inherit;text-decoration:underline">Check Android installation setup</a></div></section><div id="appToast" class="app-toast" role="status" aria-live="polite"></div>
+<script src="./recolleat-v47.js" defer></script>
+<div class="mobile-more-backdrop" id="mobileMoreBackdrop" aria-hidden="true"></div><section aria-hidden="true" aria-label="More Recolleat sections" aria-modal="true" class="mobile-more-sheet" id="mobileMoreSheet" role="dialog" inert><div class="mobile-more-handle"></div><div class="mobile-more-top"><div><span class="mobile-eyebrow">DISCOVER MORE</span><h2 id="v42MoreHeading">Explore Recolleat</h2></div><button aria-label="Close menu" id="mobileMoreClose" type="button">×</button></div><div class="mobile-more-links"><button class="more-help-link" data-more-view="help" type="button"><span class="more-icon" aria-hidden="true">?</span><span class="more-label">Help &amp; FAQs <small>· Start here</small></span></button><button data-more-view="dishes" type="button"><span class="more-icon" aria-hidden="true">♜</span><span class="more-label">Dishes</span></button><button data-more-view="cards" type="button"><span class="more-icon" aria-hidden="true">▧</span><span class="more-label">Restaurant cards</span></button><button data-more-view="cuisines" type="button"><span class="more-icon" aria-hidden="true">♛</span><span class="more-label">Cuisine podium</span></button><button data-more-view="lab" type="button"><span class="more-icon" aria-hidden="true">⚖</span><span class="more-label">Ranking Laboratory</span></button><button data-more-view="lists" type="button"><span class="more-icon" aria-hidden="true">☷</span><span class="more-label">Saved lists</span></button><button data-more-view="profile" type="button"><span class="more-icon" aria-hidden="true">◉</span><span class="more-label">My Profile</span></button><button data-more-view="privacy" type="button"><span class="more-icon" aria-hidden="true">♧</span><span class="more-label">Privacy &amp; Safety</span></button></div><div class="mobile-theme-panel" id="mobileThemeMount"></div><div class="mobile-backup-panel"><div class="reco-backup-intro"><b>Protect your journal</b><small>Stored on this device · Export a copy regularly</small></div><p id="v42BackupStatus" class="v42-backup-status" role="status">No export recorded on this device.</p><div class="reco-update-ready" id="recoUpdateReady" role="status" hidden><span>A newer Recolleat version is ready.</span><button id="recoUpdateNow" type="button">Update safely</button></div><p id="recoConnectionState" class="reco-connection-state" role="status"></p><div class="reco-backup-primary"><button id="mobileExport" type="button">↓ Export backup</button><button id="mobileImport" type="button">↑ Import backup</button></div><details class="reco-backup-extra"><summary>More backup &amp; storage tools</summary><div class="mobile-backup-actions"><button id="v42VerifyBackup" type="button">Verify a backup</button><button id="v44ProtectStorage" type="button">Protect storage</button><button id="recoRecoveryOpen" type="button">Recovery point</button><button id="recoOptimiseMedia" type="button">Optimise photos</button><input type="file" id="v42VerifyFile" accept=".json,application/json" hidden></div></details></div><p class="recolleat-build-indicator" style="margin:12px 0 0;font-size:11px;text-align:center;color:var(--muted)">Recolleat Build 47 · Find & protect</p></section><div id="appToast" class="app-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

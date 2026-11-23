@@ -1,4 +1,4 @@
-Recolleat mobile · Build 45
-22 November 2026
-Local-first journal upgrade: Unified Quick Log, visit-specific dishes and photos, Android in-app camera capture, real memory feed, permanent collection reward themes, financial insights, contextual Home, verified backup previews and local recovery point, typography tokens, and paginated large lists. IndexedDB schema upgraded from 6 to 7; export a JSON backup before installing. Earlier builds cannot open this new database version without restoration.
-No accounts or online syncing.
+Recolleat mobile · Build 47
+23 November 2026
+Find & protect: search restaurant and visit-level dishes, sort by last visited or visit count, jump to months containing visits, accessible keyboard tab navigation, backup freshness detection, and controlled offline app updates.
+Base: Build 46. IndexedDB version 7, same installed-app identity and theme rewards.

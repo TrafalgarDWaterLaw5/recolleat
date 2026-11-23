@@ -1,13 +1,13 @@
-/* Recolleat Build 45: preserve working Android installation and update offline assets. */
-const CACHE='recolleat-mobile-v45';
-const CORE=['./','./index.html','./recolleat-v45.css','./recolleat-v45.js'];
+/* Recolleat Build 47: retain Android installation assets, refresh the offline cache for the new layout. */
+const CACHE='recolleat-mobile-v47';
+const CORE=['./','./index.html','./recolleat-v45.css','./recolleat-v47.js','./recolleat-v46.css','./recolleat-v47.css'];
 const OPTIONAL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png','./install-check.html','./recolleat-release.txt'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
  await cache.addAll(CORE);
  await Promise.all(OPTIONAL.map(async path=>{try{await cache.add(path)}catch(error){console.warn('Optional offline asset unavailable',path,error)}}));
- await self.skipWaiting();
 })()));
+self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting()});
 self.addEventListener('activate',event=>event.waitUntil((async()=>{
  const keys=await caches.keys();
  await Promise.all(keys.filter(key=>key.startsWith('recolleat-')&&key!==CACHE).map(key=>caches.delete(key)));

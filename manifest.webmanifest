@@ -1,7 +1,7 @@
 {
   "name": "Recolleat · Your Food Journal",
   "short_name": "Recolleat",
-  "description": "Private local-first food journal: restaurant ratings, visit dishes, memories, meal value, spending and collection achievements.",
+  "description": "A personal restaurant and food journal with rankings, memories, dishes and meal spending.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

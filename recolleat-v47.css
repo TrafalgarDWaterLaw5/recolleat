@@ -1,0 +1,15 @@
+/* Recolleat Build 47: findability, resilience and accessible controls. */
+:root{--reco-control-min:44px}
+.reco-search-result-status{display:block;max-width:100%;font-size:12px;line-height:1.5;color:var(--muted);padding:7px 4px 10px;overflow-wrap:anywhere}
+.reco-search-result-status[hidden]{display:none!important}
+#recoVisitedMonthSelect{min-height:44px;max-width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:7px 11px;font:inherit;font-size:13px}
+#recoVisitedMonthSelect[hidden]{display:none!important}
+.reco-update-ready{padding:12px;margin:9px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--accent);border-radius:13px;background:var(--wash);color:var(--ink);font-size:13px;line-height:1.45}
+.reco-update-ready[hidden]{display:none!important}
+.reco-update-ready button{min-height:44px;padding:9px 13px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-weight:700;flex-shrink:0}
+.reco-connection-state{font-size:12px;color:var(--muted);margin:6px 1px 2px;line-height:1.45}
+#recoVisitedMonthSelect,#mobileMoreSheet button,#passportDialog button,.dish-section-tabs button,.visit-mode-tabs button{touch-action:manipulation}
+:is(button,input,select,textarea,a,[role="tab"]):focus-visible{outline:3px solid var(--accent)!important;outline-offset:3px!important}
+@media(max-width:640px){.month-nav{display:flex!important;flex-wrap:wrap;gap:7px!important;align-items:center}.month-nav strong{flex:1 1 130px;text-align:center;min-width:0}.month-nav #recoVisitedMonthSelect{flex:1 1 140px}.reco-update-ready{align-items:stretch;flex-direction:column}.reco-update-ready button{width:100%}.reco-search-result-status{font-size:13px}}
+@media(orientation:landscape) and (max-height:520px) and (max-width:1100px){#mobileMoreSheet{overflow-y:auto!important}.reco-update-ready{padding:8px}}
+@media(prefers-reduced-motion:reduce){.reco-update-ready *,#recoVisitedMonthSelect{transition:none!important;animation:none!important}}

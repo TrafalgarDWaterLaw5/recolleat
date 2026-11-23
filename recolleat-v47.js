@@ -1,0 +1,2688 @@
+(() => {
+"use strict";
+const DB_NAME="palate-local-v1", DB_VERSION=7, RESTAURANTS="restaurants", LISTS="lists", VISITS="visits", LOCATIONS="locations", MEDIA="photoMedia", SNAPSHOTS="recoverySnapshots", PREF_KEY="recolleat-android-prefs-v1";
+const PROFILE_KEY="recolleat-profile-v1";
+const DEFAULT_PREFS={view:"home",sortProperty:"grandRank",sortDirection:"asc",filters:{location:"",cuisine:"",vibe:"",region:"",service:"",minScore:"",minValue:"",maxSpend:""},graph:{fitMode:"off",filters:{location:"",cuisine:"",region:"",minFood:"",minOverall:""}},activeListId:null,sidebarCollapsed:false,dishCategories:[],hiddenDishCategories:[],labWeights:{food:60,value:20,service:20},dnaTopCount:8,appearance:{palette:"mint",mode:"dark"}};
+const SERVICE_ORDER={Horror:1,Sloppy:2,Average:3,Respectable:4,Lovely:5};
+let db=null, entries=[], lists=[], visits=[], locationMedia=[], editingId=null, editingListId=null, editingVisitId=null, selectedPassportId=null, graphSelection=null, currentDishCategoryEdit=null, dishPhotoContext=null, dishBookCategory="", dishBookIndex=0, editorPasteTarget="restaurant", graphZoom=1, graphPan={x:0,y:0}, graphDrag=null, workingPhotos=[], workingLocationImage="", locationImageEdited=false, pendingImport=null, visitMonthCursor=new Date(new Date().getFullYear(),new Date().getMonth(),1), mapLocationFocus=null;
+let prefs=loadPrefs();
+// One-time navigation upgrade: previous default Grand List becomes Collection; Home is separate.
+try{if(!localStorage.getItem('recolleat-b46-home-default')){if(prefs.view==='table'){prefs.view='home';localStorage.setItem(PREF_KEY,JSON.stringify(prefs))}localStorage.setItem('recolleat-b46-home-default','1')}}catch(e){}
+let signatureGalleryIndex=0, galleryWheelTimestamp=0, galleryTouchX=null;
+let workingVisits=[], selectedPlace=null, placeSearchCandidates=[], placeSearchNonce=0, googlePlacesConnected=false, googlePlacesLoading=false;
+ let profile=loadProfile();
+const $=id=>document.getElementById(id);
+
+function clone(o){return JSON.parse(JSON.stringify(o))}
+function loadPrefs(){try{const raw=JSON.parse(localStorage.getItem(PREF_KEY)||"{}");return {...clone(DEFAULT_PREFS),...raw,sidebarCollapsed:!!raw.sidebarCollapsed,dishCategories:Array.isArray(raw.dishCategories)?raw.dishCategories:[],hiddenDishCategories:Array.isArray(raw.hiddenDishCategories)?raw.hiddenDishCategories:[],filters:{...clone(DEFAULT_PREFS.filters),...(raw.filters||{})},graph:{...clone(DEFAULT_PREFS.graph),...(raw.graph||{}),filters:{...clone(DEFAULT_PREFS.graph.filters),...((raw.graph||{}).filters||{})}},appearance:{...clone(DEFAULT_PREFS.appearance),...(raw.appearance||{})},labWeights:{...clone(DEFAULT_PREFS.labWeights),...(raw.labWeights||{})}}}catch{return clone(DEFAULT_PREFS)}}
+function loadProfile(){try{const p=JSON.parse(localStorage.getItem(PROFILE_KEY)||"{}");return {username:typeof p.username==="string"?p.username.slice(0,30):"",photo:typeof p.photo==="string"&&p.photo.startsWith("data:image/")?p.photo:""}}catch{return {username:"",photo:""}}}
+function saveProfile(){try{localStorage.setItem(PROFILE_KEY,JSON.stringify(profile));return true}catch(e){console.warn("Profile storage unavailable",e);return false}}
+function profileAvatarMarkup(photo,label){return photo?`<img src="${esc(photo)}" alt="Profile picture">`:esc((label.trim().charAt(0)||"R").toUpperCase())}
+function renderProfile(){
+ const display=profile.username.trim()||"Recolleat collector", avatar=profileAvatarMarkup(profile.photo,display);
+ $("profileDisplayName").textContent=display;$("profileUsername").value=profile.username;
+ for(const id of ["profileBigAvatar","profileEditAvatar","headerProfileAvatar"])$(id).innerHTML=avatar;
+ $("headerProfileName").textContent=profile.username.trim()||"My profile";
+ const rated=entries.filter(e=>Number.isFinite(Number(e.foodScore)));const cuisines=new Set(entries.map(e=>(e.cuisine||"").trim().toLowerCase()).filter(Boolean));
+ const dishes=entries.reduce((n,e)=>n+(Array.isArray(e.items)?e.items.length:0),0)+visits.reduce((n,v)=>n+(v.dishes||[]).length,0);
+ const totalVisits=visits.length;
+ const intl=entries.filter(e=>e.international).length;
+ const stats=[{n:entries.length,t:"Restaurants",s:"Memories in your collection"},{n:cuisines.size,t:"Cuisines",s:"Unique cuisines explored"},{n:dishes,t:"Dishes",s:"Items recorded"},{n:totalVisits,t:"Logged visits",s:"Dated and explicitly logged undated visits"},{n:intl,t:"International",s:"Restaurants outside the UK"},{n:rated.length?(rated.reduce((sum,e)=>sum+Number(e.foodScore),0)/rated.length).toFixed(1):"—",t:"Average food score",s:"Out of 100"}];
+ $("profileStats").innerHTML=stats.map((x,i)=>`<article class="profile-stat"><span class="profile-stat-index">${String(i+1).padStart(2,"0")}</span><strong>${esc(x.n)}</strong><h4>${esc(x.t)}</h4><p>${esc(x.s)}</p></article>`).join("");
+}
+async function updateProfilePicture(file){if(!file)return;if(!file.type.startsWith("image/"))throw new Error("Choose an image file.");if(file.size>12*1024*1024)throw new Error("Choose an image smaller than 12 megabytes.");const encoded=await imageToData(file,440,.76);const previous=profile.photo;profile.photo=encoded;if(!saveProfile()){profile.photo=previous;throw new Error("This browser could not save the image. Try a smaller picture.")}renderProfile()}
+function savePrefs(){try{localStorage.setItem(PREF_KEY,JSON.stringify(prefs))}catch(err){console.warn("Appearance preferences may not persist in this browser",err)}}
+const REWARDS_KEY='recolleat-permanent-rewards-v45';
+let earnedRewardLevels=(()=>{try{const values=JSON.parse(localStorage.getItem(REWARDS_KEY)||'[]');return Array.isArray(values)?values.filter(x=>[10,20,30,40].includes(x)):[]}catch{return []}})();
+function updateEarnedRewards(){
+ const levels=[10,20,30,40].filter(n=>collectedRestaurants()>=n);
+ const next=[...new Set([...earnedRewardLevels,...levels])].sort((a,b)=>a-b);
+ if(next.length!==earnedRewardLevels.length){earnedRewardLevels=next;try{localStorage.setItem(REWARDS_KEY,JSON.stringify(next))}catch(e){console.warn('Milestone reward persistence unavailable',e)}}
+}
+const THEME_MILESTONES=Object.freeze({mint:0,original:0,royal:10,citrus:20,crimson:30,golden:40});
+const THEME_LABELS=Object.freeze({mint:"Recolleat Classic",original:"Black & White",royal:"Plum & Champagne",citrus:"Electric Citrus",crimson:"Crimson Red",golden:"Golden Hour"});
+let previousThemeMilestone=null;
+function collectedRestaurants(){return new Set(entries.map(e=>e.id)).size}
+function themeRequired(palette){return Object.prototype.hasOwnProperty.call(THEME_MILESTONES,palette)?THEME_MILESTONES[palette]:0}
+function themeUnlocked(palette){return Object.prototype.hasOwnProperty.call(THEME_MILESTONES,palette)&&(themeRequired(palette)===0||earnedRewardLevels.includes(themeRequired(palette))||collectedRestaurants()>=themeRequired(palette))}
+function nextThemeGoal(){const count=collectedRestaurants();const next=[10,20,30,40].find(n=>!earnedRewardLevels.includes(n)&&count<n);return {count,next,nextTheme:next?Object.keys(THEME_MILESTONES).find(p=>THEME_MILESTONES[p]===next):null}}
+function renderThemeJourney(){
+ updateEarnedRewards();const {count,next,nextTheme}=nextThemeGoal();
+ const available=Object.keys(THEME_MILESTONES).filter(themeUnlocked).length;
+ const selected=document.documentElement.dataset.theme;
+ document.querySelectorAll('.palette-option[data-palette]').forEach(b=>{
+  const palette=b.dataset.palette,required=themeRequired(palette),unlocked=themeUnlocked(palette);
+  b.classList.toggle('reco-theme-locked',!unlocked);
+  b.setAttribute('aria-disabled',unlocked?'false':'true');
+  b.setAttribute('aria-pressed',palette===selected?'true':'false');
+  b.setAttribute('aria-label',`${THEME_LABELS[palette]}. ${unlocked?'Available':`Locked: save ${required} restaurants; ${Math.max(0,required-count)} more needed`}.`);
+  let status=b.querySelector('.reco-palette-state');if(!status){status=document.createElement('span');status.className='reco-palette-state';b.appendChild(status)}
+  status.textContent=unlocked?(palette===selected?'✓ In use':required?'Earned forever':'Available'):`🔒 ${required} restaurants · ${required-count} to go`;
+ });
+ const byId=id=>$(id);const currentGoal=next||40;
+ if(byId('themeUnlockCount'))byId('themeUnlockCount').textContent=next?`${count} / ${next}`:`${count} saved · all earned`;
+ if(byId('themeUnlockMessage'))byId('themeUnlockMessage').textContent=next?`${Math.max(0,next-count)} more ${next-count===1?'restaurant':'restaurants'} to unlock ${THEME_LABELS[nextTheme]}.`:'All four milestone palettes earned permanently. Enjoy your collection!';
+ if(byId('themeUnlockedTotal'))byId('themeUnlockedTotal').textContent=`${available} of 6 available`;
+ if(byId('themeUnlockFill'))byId('themeUnlockFill').style.width=`${Math.min(100,count/currentGoal*100)}%`;
+ const meter=byId('themeUnlockMeter');if(meter){meter.setAttribute('aria-valuemax',String(currentGoal));meter.setAttribute('aria-valuenow',String(Math.min(currentGoal,count)));meter.setAttribute('aria-valuetext',next?`${count} of ${next} restaurants saved`:`All four milestone themes earned permanently; ${count} restaurants currently saved`)}
+ if(byId('recoThemeHomeTitle'))byId('recoThemeHomeTitle').textContent=next?THEME_LABELS[nextTheme]:'All colours unlocked';
+ if(byId('recoThemeHomeDescription'))byId('recoThemeHomeDescription').textContent=next?`${next-count} more ${next-count===1?'restaurant':'restaurants'} to unlock · ${count} saved now`:`You reached 40 restaurants. Keep documenting the meals you love.`;
+ if(byId('recoThemeHomeFill'))byId('recoThemeHomeFill').style.width=`${Math.min(100,count/currentGoal*100)}%`;
+ const newMilestone=[10,20,30,40].filter(n=>count>=n).at(-1)||0;
+ if(previousThemeMilestone!==null&&newMilestone>previousThemeMilestone){
+  const unlocked=Object.keys(THEME_MILESTONES).find(p=>THEME_MILESTONES[p]===newMilestone);
+  notify(`New colour unlocked: ${THEME_LABELS[unlocked]}! Find it under Colour themes.`,'success');
+ }
+ previousThemeMilestone=newMilestone;
+}
+function applyAppearance(){
+  const a=prefs.appearance||DEFAULT_PREFS.appearance;
+  const requested=a.palette==='mono'?'original':a.palette;
+  const palette=themeUnlocked(requested)?requested:'mint',mode=a.mode==='light'?'light':'dark';
+  if(palette!==a.palette){prefs.appearance={...a,palette};savePrefs()}
+  document.documentElement.dataset.theme=palette;
+  document.documentElement.dataset.mode=mode;
+  const toggle=$('modeToggle');if(toggle)toggle.textContent=mode==='dark'?'☾ Dark mode':'☀ Light mode';
+  renderThemeJourney();
+}
+function setPalette(palette){
+ if(!themeUnlocked(palette)){const remaining=Math.max(0,themeRequired(palette)-collectedRestaurants());notify(`${THEME_LABELS[palette]||'This colour'} unlocks after ${themeRequired(palette)} saved restaurants. ${remaining} to go.`,'error');return}
+ prefs.appearance={...prefs.appearance,palette};savePrefs();applyAppearance();
+}
+function toggleMode(){prefs.appearance={...prefs.appearance,mode:(prefs.appearance.mode==='dark'?'light':'dark')};savePrefs();applyAppearance()}
+
+function uid(){return crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`}
+function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function scoreColor(n){const s=Math.max(0,Math.min(100,Number(n)||0));return `hsl(${s*1.25} 63% 28%)`}
+function ppText(n){return n===null||n===undefined?'Price not rated':Number(n)>=75?"£75+":`£${Number(n)||0}`}
+function mapQuery(e){return [e.restaurant,e.location].filter(Boolean).join(", ")}
+
+function normalise(e){
+  return {id:e.id||uid(),restaurant:e.restaurant||"",cuisine:e.cuisine||"",foodScore:Number(e.foodScore??75),
+    valueScore:(e.valueScore===null||e.valueScore===undefined||e.valueScore==="")?null:(e.valueScale===100?Number(e.valueScore):(Number(e.valueScore)<=10?Number(e.valueScore)*10:Number(e.valueScore))),valueScale:100,items:Array.isArray(e.items)?e.items:[],battleHistory:Array.isArray(e.battleHistory)?e.battleHistory:[],service:e.service||"Average",
+    vibes:Array.isArray(e.vibes)?e.vibes:[],pp:e.pp===null?null:Number(e.pp??25),dateVisited:e.dateVisited||"",
+    manualVisitCount:Math.max(0,Math.floor(Number(e.manualVisitCount??e.visitCount??0))),international:!!e.international,
+    location:e.location||"",notes:e.notes||"",photos:Array.isArray(e.photos)?e.photos:[],
+    placeSource:e.placeSource||"",osmType:e.osmType||"",osmId:e.osmId||"",placeAddress:e.placeAddress||"",googlePlaceId:e.googlePlaceId||"",googleMapsUrl:e.googleMapsUrl||"",
+    latitude:Number.isFinite(Number(e.latitude))&&e.latitude!==null&&e.latitude!==""?Number(e.latitude):null,
+    longitude:Number.isFinite(Number(e.longitude))&&e.longitude!==null&&e.longitude!==""?Number(e.longitude):null,
+    createdAt:e.createdAt||new Date().toISOString(),updatedAt:e.updatedAt||new Date().toISOString()};
+}
+function normaliseList(l){
+  return {id:l.id||uid(),name:l.name||"Untitled list",description:l.description||"",restaurantIds:Array.isArray(l.restaurantIds)?l.restaurantIds:[],
+    createdAt:l.createdAt||new Date().toISOString(),updatedAt:l.updatedAt||new Date().toISOString()};
+}
+function validVisitMoney(raw){
+  if(raw===null||raw===undefined||raw==="")return null;
+  const n=Number(raw);
+  return Number.isFinite(n)&&n>=0&&n<=10000000?Math.round(n*100)/100:null;
+}
+function normaliseVisit(v){
+  const paidFor=v.paidFor===true;
+  return {id:v.id||uid(),restaurantId:v.restaurantId||"",date:v.date||"",
+    foodValue:validVisitMoney(v.foodValue),spend:paidFor?0:validVisitMoney(v.spend),paidFor,
+    foodRating:v.foodRating===null||v.foodRating===undefined||v.foodRating===''?null:(Number.isFinite(Number(v.foodRating))?Math.max(0,Math.min(100,Number(v.foodRating))):null),
+    dishes:Array.isArray(v.dishes)?v.dishes.filter(i=>i&&typeof i.name==='string'&&i.name.trim()).map(i=>({id:i.id||uid(),name:String(i.name).slice(0,140),rating:i.rating===null||i.rating===undefined||i.rating===''?null:Math.max(0,Math.min(10,Number(i.rating))),price:validVisitMoney(i.price),category:String(i.category||''),categories:Array.isArray(i.categories)?i.categories:[],photo:typeof i.photo==='string'?i.photo:''})):[],
+    photos:Array.isArray(v.photos)?v.photos.filter(x=>typeof x==='string'&&x.startsWith('data:image/')||typeof x==='string'&&x.startsWith('media:')):[],
+    note:v.note||"",createdAt:v.createdAt||new Date().toISOString(),updatedAt:v.updatedAt||new Date().toISOString()};
+}
+function visitMoney(v,key){return validVisitMoney(v?.[key]);}
+function moneyLabel(value){return value===null?'Not recorded':`£${value.toFixed(2)}`;}
+function visitCostDetails(v){const food=visitMoney(v,'foodValue'),paid=visitMoney(v,'spend');return `<span class="cost-breakdown"><b>Paid ${paid===null?'—':`£${paid.toFixed(2)}`}</b><small>Food ${food===null?'—':`£${food.toFixed(2)}`}${v.paidFor?' · Treated':''}</small></span>`;}
+function sumRecordedMoney(records,key){const values=records.map(v=>visitMoney(v,key)).filter(v=>v!==null);return {total:values.reduce((sum,n)=>sum+n,0),count:values.length};}
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    if(!("indexedDB" in window)){reject(new Error("IndexedDB unavailable"));return}
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
+    req.onupgradeneeded=()=>{
+      const d=req.result;
+      if(!d.objectStoreNames.contains(RESTAURANTS))d.createObjectStore(RESTAURANTS,{keyPath:"id"});
+      if(!d.objectStoreNames.contains(LISTS))d.createObjectStore(LISTS,{keyPath:"id"});
+      if(!d.objectStoreNames.contains(VISITS))d.createObjectStore(VISITS,{keyPath:"id"});
+      if(!d.objectStoreNames.contains(LOCATIONS))d.createObjectStore(LOCATIONS,{keyPath:"id"});
+      if(!d.objectStoreNames.contains(MEDIA))d.createObjectStore(MEDIA,{keyPath:'id'});
+      if(!d.objectStoreNames.contains(SNAPSHOTS))d.createObjectStore(SNAPSHOTS,{keyPath:'id'});
+    };
+    req.onsuccess=()=>{db=req.result;db.onversionchange=()=>{db.close();notify('Journal storage changed in another tab. Reload this tab before saving.','error')};resolve()};req.onerror=()=>reject(req.error);
+  });
+}
+function allStore(store){return new Promise((resolve,reject)=>{
+  if(!db)return reject(new Error('Journal storage is unavailable'));
+  let tx;try{tx=db.transaction(store,'readonly');const request=tx.objectStore(store).getAll();let value=[];
+    request.onsuccess=()=>{value=request.result||[]};
+    tx.oncomplete=()=>resolve(value);tx.onabort=()=>reject(tx.error||new Error('Reading journal storage failed'));
+  }catch(err){reject(err)}
+})}
+// Build 45: photographs have their own IndexedDB records. Journal records store
+// compact media references, while the in-memory model and exported JSON retain
+// ordinary data URLs for full backwards compatibility.
+const mediaById=new Map(), mediaBySource=new Map();
+function hydrateMediaRecord(row){
+ if(!row)return row;
+ const value={...row},hydrate=x=>typeof x==='string'&&x.startsWith('media:')?(mediaById.get(x.slice(6))||''):x;
+ if(Array.isArray(value.photos))value.photos=value.photos.map(hydrate);
+ if(Array.isArray(value.items))value.items=value.items.map(item=>({...item,photo:hydrate(item.photo)}));
+ if(Array.isArray(value.dishes))value.dishes=value.dishes.map(item=>({...item,photo:hydrate(item.photo)}));
+ if(typeof value.image==='string')value.image=hydrate(value.image);
+ if(typeof value.photo==='string')value.photo=hydrate(value.photo);
+ return value;
+}
+function stageMediaRecord(store,original,pending,forceNew=false){
+ if(![RESTAURANTS,VISITS,LOCATIONS].includes(store)||!original||typeof original!=='object')return original;
+ const put=x=>{
+   if(typeof x!=='string'||!x.startsWith('data:image/'))return x;
+   let id=(!forceNew&&mediaBySource.get(x))||pending.bySource.get(x);
+   if(!id){id=uid();pending.bySource.set(x,id);pending.records.push({id,src:x})}
+   return 'media:'+id;
+ };
+ const value={...original};
+ if(Array.isArray(value.photos))value.photos=value.photos.map(put);
+ if(Array.isArray(value.items))value.items=value.items.map(item=>({...item,photo:put(item.photo)}));
+ if(Array.isArray(value.dishes))value.dishes=value.dishes.map(item=>({...item,photo:put(item.photo)}));
+ if(typeof value.photo==='string')value.photo=put(value.photo);
+ if(typeof value.image==='string')value.image=put(value.image);
+ return value;
+}
+async function migrateExistingMedia(){
+ const raw=[...[...(await allStore(RESTAURANTS))].map(e=>[RESTAURANTS,e]),
+ ...[...(await allStore(VISITS))].map(e=>[VISITS,e]),
+ ...[...(await allStore(LOCATIONS))].map(e=>[LOCATIONS,e])];
+ const needs=raw.filter(([,r])=>[...(r.photos||[]),(r.items||[]).map(i=>i.photo),(r.dishes||[]).map(i=>i.photo),r.photo,r.image].some(x=>typeof x==='string'&&x.startsWith('data:image/')));
+ for(let i=0;i<needs.length;i+=8){await mutateStores(needs.slice(i,i+8).map(([store,row])=>[store,'put',row]))}
+ return needs.length;
+}
+async function pruneUnusedMedia(){
+ const data=await Promise.all([allStore(RESTAURANTS),allStore(VISITS),allStore(LOCATIONS),allStore(MEDIA)]);
+ const used=new Set();
+ for(const rows of data.slice(0,3))for(const row of rows){
+   for(const v of [...(row.photos||[]),...(row.items||[]).map(i=>i.photo),...(row.dishes||[]).map(i=>i.photo),row.image,row.photo]){
+     if(typeof v==='string'&&v.startsWith('media:'))used.add(v.slice(6));
+   }
+ }
+ const unused=data[3].filter(p=>!used.has(p.id));
+ for(let i=0;i<unused.length;i+=100)await mutateStores(unused.slice(i,i+100).map(p=>[MEDIA,'delete',p.id]));
+ for(const item of unused){mediaById.delete(item.id);mediaBySource.delete(item.src)}
+ return unused.length;
+}
+// All queued mutations commit together, or IndexedDB aborts the whole transaction.
+// Resolve only on transaction.oncomplete, never on individual request.onsuccess.
+function mutateStores(operations){return new Promise((resolve,reject)=>{
+  if(!db)return reject(new Error('Journal storage is unavailable'));
+  if(!operations.length)return resolve();
+  const resetMedia=operations.some(([name,op])=>name===MEDIA&&op==='clear');
+  const pending={bySource:new Map(),records:[]};
+  const prepared=operations.map(([name,op,value])=>[name,op,op==='put'?stageMediaRecord(name,value,pending,resetMedia):value]);
+  if(pending.records.length)prepared.push(...pending.records.map(rec=>[MEDIA,'put',rec]));
+  const stores=[...new Set(prepared.map(operation=>operation[0]))];let tx;
+  try{tx=db.transaction(stores,'readwrite');
+    tx.oncomplete=()=>{
+      if(resetMedia){mediaById.clear();mediaBySource.clear()}
+      for(const image of pending.records){mediaById.set(image.id,image.src);mediaBySource.set(image.src,image.id)}
+      resolve();
+    };
+    tx.onabort=()=>reject(tx.error||new Error('Storage transaction was cancelled; nothing was saved'));
+    for(const [name,operation,value] of prepared){
+      const store=tx.objectStore(name);
+      if(operation==='put')store.put(value);
+      else if(operation==='delete')store.delete(value);
+      else if(operation==='clear')store.clear();
+      else throw new Error('Invalid storage operation');
+    }
+  }catch(err){if(tx){try{tx.abort()}catch{}}reject(err)}
+})}
+function putStore(store,e){return mutateStores([[store,'put',e]])}
+function delStore(store,id){return mutateStores([[store,'delete',id]])}
+function clearStore(store){return mutateStores([[store,'clear']])}
+function locationKey(label){return String(label||"").trim().replace(/\s+/g," ").toLocaleLowerCase("en-GB")}
+function normaliseLocationRecord(r){return {id:locationKey(r.id),image:r.image||"",updatedAt:r.updatedAt||new Date().toISOString()}}
+function getLocationImage(location){return locationMedia.find(x=>x.id===locationKey(location))?.image||""}
+function setLocationImagePreview(src="",edited=false){
+  workingLocationImage=src||"";
+  if(edited)locationImageEdited=true;
+  $("locationImagePreview").innerHTML=src?`<img src="${esc(src)}"><span class="muted">Shared location picture · visible for every restaurant here</span>`:'<span class="muted">No shared location picture selected.</span>';
+}
+function refreshLocationImagePreview(){locationImageEdited=false;setLocationImagePreview(getLocationImage($("location").value))}
+
+
+function grandList(){
+  return [...entries].sort((a,b)=>{
+    const ao=overallScoreRaw(a),bo=overallScoreRaw(b);
+    if(ao===null&&bo===null)return b.foodScore-a.foodScore || a.restaurant.localeCompare(b.restaurant);
+    if(ao===null)return 1;
+    if(bo===null)return -1;
+    return bo-ao || b.foodScore-a.foodScore || b.valueScore-a.valueScore || a.restaurant.localeCompare(b.restaurant);
+  });
+}
+function grandRankMap(){
+  const map=new Map();grandList().forEach((e,i)=>map.set(e.id,i+1));return map;
+}
+function starredDishIndexes(items){
+  if(!Array.isArray(items)||items.length<2)return new Set();
+  const max=Math.max(...items.map(i=>Number(i.rating)||0));
+  return new Set(items.map((i,idx)=>(Number(i.rating)||0)===max?idx:null).filter(i=>i!==null));
+}
+function serviceClass(service){
+  const key=String(service||"Average").toLowerCase();
+  return `service-pill service-${key}`;
+}
+function serviceNumericScore(service){
+  return ({Horror:20,Sloppy:40,Average:60,Respectable:80,Lovely:100})[service] ?? 60;
+}
+function overallScoreRaw(e){
+  if(e.valueScore===null||e.valueScore===undefined||Number.isNaN(Number(e.valueScore))||!SERVICE_ORDER[e.service])return null;
+  return 0.60*Number(e.foodScore||0)+0.20*Number(e.valueScore||0)+0.20*serviceNumericScore(e.service);
+}
+function roundToTwoSigFigs(value){
+  if(value===null||value===undefined||!Number.isFinite(Number(value)))return null;
+  const n=Number(value);
+  if(n===0)return 0;
+  return Number(n.toPrecision(2));
+}
+function overallScore(e){return roundToTwoSigFigs(overallScoreRaw(e))}
+function factorValue(e,key){
+  if(key==="overallScore")return overallScore(e);
+  if(key==="foodScore")return Number(e.foodScore);
+  if(key==="service")return serviceNumericScore(e.service);
+  if(key==="valueScore")return e.valueScore===null?null:Number(e.valueScore);
+  if(key==="pp")return Number(e.pp);
+  if(key==="location")return entries.find(x=>locationKey(x.location)===locationKey(e.location))?.location||e.location||"No location";
+  if(key==="cuisine")return e.cuisine||"Uncategorised";
+  return null;
+}
+function factorLabel(key){return ({overallScore:"Overall score",foodScore:"Food score",service:"Service",valueScore:"Value",pp:"£ pp",location:"Location",cuisine:"Cuisine"})[key]||key}
+
+function restaurantVisits(id){return visits.filter(v=>v.restaurantId===id).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")))}
+function effectiveVisitCount(e){return Math.max(Number(e.manualVisitCount||0),restaurantVisits(e.id).length)}
+function visitDisplayCount(e){const n=effectiveVisitCount(e);return n>10?"10+":String(n)}
+function datedRestaurantVisits(id){return restaurantVisits(id).filter(v=>!!v.date)}
+function minAllowedVisitCount(e){return restaurantVisits(e.id).length}
+function firstVisitDate(e){
+  const arr=datedRestaurantVisits(e.id);
+  return arr.length?arr[0].date:(e.dateVisited||"");
+}
+function latestVisitDate(e){
+  const arr=datedRestaurantVisits(e.id);
+  return arr.length?arr[arr.length-1].date:(e.dateVisited||"");
+}
+function shortDate(s){
+  if(!s)return "—";
+  const d=new Date(s+"T12:00:00");
+  return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"2-digit"});
+}
+function visitDisplayValue(e){return `${e.restaurant}${e.location?` — ${e.location}`:""}`}
+function resolveVisitRestaurantId(text){
+  const exact=entries.find(e=>visitDisplayValue(e)===text);
+  if(exact)return exact.id;
+  const byName=entries.filter(e=>e.restaurant.toLowerCase()===String(text||"").trim().toLowerCase());
+  return byName.length===1?byName[0].id:"";
+}
+function median(values){
+  const a=[...values].sort((x,y)=>x-y),n=a.length;
+  return n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2;
+}
+function cuisineStats(){
+  const ranks=grandRankMap(), grouped={};
+  for(const e of entries){
+    const c=e.cuisine?.trim()||"Uncategorised";
+    if(!grouped[c])grouped[c]=[];
+    grouped[c].push(e);
+  }
+  const all=Object.entries(grouped).map(([cuisine,items])=>{
+    const positions=items.map(e=>ranks.get(e.id));
+    const avgPos=positions.reduce((a,b)=>a+b,0)/positions.length;
+    const medianPos=median(positions);
+    const avgScore=items.reduce((a,b)=>a+b.foodScore,0)/items.length;
+    const sorted=[...items].sort((a,b)=>{
+      const ao=overallScoreRaw(a),bo=overallScoreRaw(b);
+      if(ao===null&&bo===null)return b.foodScore-a.foodScore;
+      if(ao===null)return 1;if(bo===null)return -1;
+      return bo-ao || b.foodScore-a.foodScore;
+    });
+    const best=sorted[0],worst=sorted[sorted.length-1];
+    return {cuisine,count:items.length,avgPos,medianPos,avgScore,best,worst,eligible:items.length>=3};
+  });
+  const eligible=all.filter(x=>x.eligible)
+    .sort((a,b)=>a.medianPos-b.medianPos || a.avgPos-b.avgPos || b.avgScore-a.avgScore || a.cuisine.localeCompare(b.cuisine))
+    .map((x,i)=>({...x,cuisineRank:i+1}));
+  const provisional=all.filter(x=>!x.eligible)
+    .sort((a,b)=>b.count-a.count || a.medianPos-b.medianPos || b.avgScore-a.avgScore || a.cuisine.localeCompare(b.cuisine));
+  return {eligible,provisional};
+}
+function filtered(){
+  const q=$("search").value.trim().toLocaleLowerCase("en-GB"),terms=q.split(/\s+/).filter(Boolean),f=prefs.filters||DEFAULT_PREFS.filters,ranks=grandRankMap();
+  const visitText=new Map();
+  if(terms.length)for(const v of visits){
+    const parts=[v.note||'',...(v.dishes||[]).map(d=>d.name||''),v.date||''];
+    visitText.set(v.restaurantId,(visitText.get(v.restaurantId)||'')+' '+parts.join(' '));
+  }
+  let data=entries.filter(e=>{
+    const hay=[e.restaurant,e.cuisine,e.location,e.notes,...(e.items||[]).map(i=>i.name),...(e.vibes||[]),visitText.get(e.id)||''].join(" ").toLocaleLowerCase("en-GB");
+    if(terms.length&&!terms.every(term=>hay.includes(term)))return false;if(f.location&&locationKey(e.location)!==locationKey(f.location))return false;if(f.cuisine&&e.cuisine!==f.cuisine)return false;
+    if(f.vibe&&!e.vibes.includes(f.vibe))return false;
+    if(f.region==="international"&&!e.international)return false;
+    if(f.region==="uk"&&e.international)return false;
+    if(f.service&&e.service!==f.service)return false;
+    if(f.minScore!==""&&e.foodScore<Number(f.minScore))return false;
+    if(f.minValue!==""&&(e.valueScore===null||e.valueScore<Number(f.minValue)))return false;
+    if(f.maxSpend!==""&&e.pp>Number(f.maxSpend))return false;return true;
+  });
+  const p=prefs.sortProperty||"grandRank",d=prefs.sortDirection==="asc"?1:-1;
+  // A large collection should not scan the full visit database inside every sort comparison.
+  const latestById=new Map(),visitsById=new Map();
+  if(p==='lastVisited'||p==='visitCount')for(const v of visits){
+    visitsById.set(v.restaurantId,(visitsById.get(v.restaurantId)||0)+1);
+    if(v.date&&(!latestById.has(v.restaurantId)||v.date>latestById.get(v.restaurantId)))latestById.set(v.restaurantId,v.date);
+  }
+  data.sort((a,b)=>{
+    let av=p==="grandRank"?ranks.get(a.id):(p==="overallScore"?overallScoreRaw(a):a[p]),bv=p==="grandRank"?ranks.get(b.id):(p==="overallScore"?overallScoreRaw(b):b[p]);
+    if(p==="lastVisited"){
+      av=latestById.get(a.id)||a.dateVisited||null;bv=latestById.get(b.id)||b.dateVisited||null;
+      if(!av||!bv)return !av&&!bv?a.restaurant.localeCompare(b.restaurant):(!av?1:-1);
+    }
+    if(p==="visitCount"){av=Math.max(Number(a.manualVisitCount||0),visitsById.get(a.id)||0);bv=Math.max(Number(b.manualVisitCount||0),visitsById.get(b.id)||0)}
+    if(p==="service"){av=SERVICE_ORDER[av]||0;bv=SERVICE_ORDER[bv]||0}
+    if(p==="updatedAt"){av=new Date(av).getTime();bv=new Date(bv).getTime()}
+    if(p==="valueScore"||p==="overallScore"){
+      if(av===null&&bv===null)return 0;if(av===null)return 1;if(bv===null)return -1;
+    }
+    if(typeof av==="string"||typeof bv==="string")return String(av||"").localeCompare(String(bv||""))*d;
+    return ((Number(av)||0)-(Number(bv)||0))*d
+  });
+  return data;
+}
+function refreshLists(){
+  const locationMap=new Map();entries.forEach(e=>{if(e.location&&!locationMap.has(locationKey(e.location)))locationMap.set(locationKey(e.location),e.location.trim())});
+  const loc=[...locationMap.values()].sort(),cui=[...new Set(entries.map(e=>e.cuisine).filter(Boolean))].sort();
+  $("locationList").innerHTML=loc.map(x=>`<option value="${esc(x)}"></option>`).join("");$("cuisineList").innerHTML=cui.map(x=>`<option value="${esc(x)}"></option>`).join("");
+  $("filterLocation").innerHTML='<option value="">All locations</option>'+loc.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  $("filterCuisine").innerHTML='<option value="">All cuisines</option>'+cui.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  $("graphFilterLocation").innerHTML='<option value="">All locations</option>'+loc.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  $("graphFilterCuisine").innerHTML='<option value="">All cuisines</option>'+cui.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  $("filterLocation").value=prefs.filters.location||"";$("filterCuisine").value=prefs.filters.cuisine||"";
+  $("graphFilterLocation").value=prefs.graph.filters.location||"";$("graphFilterCuisine").value=prefs.graph.filters.cuisine||"";
+}
+function renderStats(data){
+  $("statCount").textContent=data.length;
+  $("statAvg").textContent=data.length?(data.reduce((s,e)=>s+e.foodScore,0)/data.length).toFixed(1):"—";
+  // A restaurant's listed price is not the money personally paid on a visit.
+  const listedPrices=data.map(e=>e.pp).filter(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v)));
+  $("statSpend").textContent=listedPrices.length?"£"+Math.round(listedPrices.reduce((sum,v)=>sum+Number(v),0)/listedPrices.length):"—";
+
+  if(prefs.filters.cuisine){
+    // A cuisine-specific view should not show the best cuisine across the full database.
+    const rated=data.filter(e=>e.valueScore!==null&&e.valueScore!==undefined&&Number.isFinite(Number(e.valueScore)));
+    $("statCuisineLabel").textContent="Average value";
+    $("statCuisine").textContent=rated.length?(rated.reduce((sum,e)=>sum+Number(e.valueScore),0)/rated.length).toFixed(1):"—";
+    $("statCuisineSub").textContent=rated.length?`out of 100 · ${rated.length} rated ${rated.length===1?"restaurant":"restaurants"}`:"no value ratings in current view";
+  }else{
+    $("statCuisineLabel").textContent="Top cuisine";
+    const cs=cuisineStats().eligible[0];
+    $("statCuisine").textContent=cs?cs.cuisine:"—";
+    $("statCuisineSub").textContent=cs?`median overall-rank position ${cs.medianPos.toFixed(1)} · ${cs.count} places`:"needs 3+ restaurants to qualify";
+  }
+}
+function renderChips(){
+  const f=prefs.filters,ch=[];if(f.location)ch.push(["location",`Location: ${f.location}`]);if(f.cuisine)ch.push(["cuisine",`Cuisine: ${f.cuisine}`]);if(f.vibe)ch.push(["vibe",`Vibe: ${f.vibe}`]);if(f.region)ch.push(["region",f.region==="international"?"International":"United Kingdom"]);if(f.service)ch.push(["service",`Service: ${f.service}`]);
+  if(f.minScore!=="")ch.push(["minScore",`Rating ≥ ${f.minScore}`]);if(f.minValue!=="")ch.push(["minValue",`Value ≥ ${f.minValue}`]);if(f.maxSpend!=="")ch.push(["maxSpend",`£ / person ≤ ${f.maxSpend}`]);
+  $("chips").innerHTML=ch.map(([k,t])=>`<span class="chip">${esc(t)}<button data-clear-filter="${k}">×</button></span>`).join("");$("filterCount").textContent=ch.length?`(${ch.length})`:"";
+}
+function renderSortMarks(){document.querySelectorAll("th[data-sort]").forEach(th=>th.querySelector("i").textContent=th.dataset.sort===prefs.sortProperty?(prefs.sortDirection==="asc"?"↑":"↓"):"")}
+function bubblePack(locations){
+  const stage=$("bubbleStage");
+  const width=Math.max(315,stage.clientWidth||920);
+  const totalArea=locations.reduce((a,g)=>a+Math.PI*Math.pow(g.size/2+11,2),0);
+  const height=Math.max(430,Math.round(width*0.68),Math.ceil(totalArea/(width*.55)));
+  const placed=[];
+  for(const g of locations){
+    const r=g.size/2;let best=null;
+    if(!placed.length){best={x:width/2,y:height/2,r};}
+    else {
+      for(let t=0;t<2600;t++){
+        const angle=t*0.47, spiral=6+angle*5.1;
+        const x=width/2+Math.cos(angle)*spiral, y=height/2+Math.sin(angle)*spiral*0.72;
+        if(x-r<8||x+r>width-8||y-r<8||y+r>height-8)continue;
+        if(placed.every(p=>Math.hypot(x-p.x,y-p.y)>=r+p.r+9)){best={x,y,r};break}
+      }
+      if(!best){
+        for(let y=r+8;y<=height-r-8&&!best;y+=Math.max(12,r/3)){
+          for(let x=r+8;x<=width-r-8;x+=Math.max(12,r/3)){
+            if(placed.every(p=>Math.hypot(x-p.x,y-p.y)>=r+p.r+9)){best={x,y,r};break}
+          }
+        }
+      }
+      if(!best)best={x:width/2,y:height+r*placed.length,r};
+    }
+    placed.push({...g,...best});
+  }
+  const minX=Math.min(...placed.map(p=>p.x-p.r)), maxX=Math.max(...placed.map(p=>p.x+p.r));
+  const minY=Math.min(...placed.map(p=>p.y-p.r)), maxY=Math.max(...placed.map(p=>p.y+p.r));
+  const offsetX=(width-(maxX-minX))/2-minX, offsetY=(height-(maxY-minY))/2-minY;
+  return {width,height,placed:placed.map(p=>({...p,x:p.x+offsetX,y:p.y+offsetY}))};
+}
+function renderLocationConstellation(location,items){
+  const sorted=[...items].sort((a,b)=>(overallScoreRaw(b)??-1)-(overallScoreRaw(a)??-1));
+  if(window.matchMedia('(max-width: 650px)').matches){
+    const image=getLocationImage(location);
+    const scores=sorted.map(overallScoreRaw).filter(v=>v!==null);
+    const average=scores.length?roundToTwoSigFigs(scores.reduce((a,b)=>a+b,0)/scores.length):'—';
+    return `<div class="mobile-location-network">
+      <div class="mobile-location-core">${image?`<img src="${esc(image)}" alt="">`:''}<span class="orbit-shade"></span><div class="mobile-location-core-copy"><span>LOCATION PASSPORT</span><strong>${esc(location)}</strong><small>${sorted.length} ${sorted.length===1?'restaurant':'restaurants'} · Average ${average}</small></div></div>
+      <div class="mobile-location-grid">${sorted.map(e=>{const photo=e.photos?.[0]||getLocationImage(e.location),score=overallScore(e);
+        return `<button type="button" class="mobile-location-bubble" data-open-passport="${esc(e.id)}" aria-label="Open ${esc(e.restaurant)}"><span class="mobile-location-image">${photo?`<img src="${esc(photo)}" alt="">`:''}<span class="orbit-shade"></span><span class="mobile-bubble-copy"><b>${esc(e.restaurant)}</b><small>${esc(e.cuisine||'Restaurant')}</small><strong>${score===null?'—':score} <i>overall</i></strong></span></span></button>`}).join('')}</div>
+      <p class="constellation-help">Tap a restaurant to view its passport.</p>
+    </div>`;
+  }
+  const diameter=138,centerSize=208,ringStart=258,ringStep=185;
+  const positions=[],rings=[];let pos=0,ring=0;
+  while(pos<sorted.length){
+    const radius=ringStart+ring*ringStep,capacity=Math.max(4,Math.floor(2*Math.PI*radius/(diameter+22)));
+    const count=Math.min(capacity,sorted.length-pos); rings.push({radius,count});
+    for(let k=0;k<count;k++){
+      const angle=-Math.PI/2+(k+0.25*(ring%2))*2*Math.PI/count;
+      positions.push({x:radius*Math.cos(angle),y:radius*Math.sin(angle),e:sorted[pos++]});
+    }
+    ring++;
+  }
+  const maxRadius=rings.length?rings[rings.length-1].radius:0;
+  const size=Math.max(580,Math.ceil((maxRadius+diameter/2+46)*2));
+  const cx=size/2,cy=size/2,locImage=getLocationImage(location);
+  const valid=sorted.map(overallScoreRaw).filter(v=>v!==null);
+  const avg=valid.length?roundToTwoSigFigs(valid.reduce((a,b)=>a+b,0)/valid.length):"—";
+  const lines=positions.map(p=>`<line x1="${cx}" y1="${cy}" x2="${cx+p.x}" y2="${cy+p.y}"/>`).join("");
+  const leafs=positions.map(({x,y,e},i)=>{
+    const image=e.photos?.[0]||getLocationImage(e.location),score=overallScore(e);
+    return `<button type="button" class="constellation-bubble restaurant-orbit" style="left:${cx+x-diameter/2}px;top:${cy+y-diameter/2}px;width:${diameter}px;height:${diameter}px;animation-delay:${Math.min(0.6,i*.045)}s" data-open-passport="${esc(e.id)}" title="Open ${esc(e.restaurant)} profile">
+      ${image?`<img src="${esc(image)}" alt="">`:''}<span class="orbit-shade"></span><span class="orbit-copy"><b>${esc(e.restaurant)}</b><small>${esc(e.cuisine||'Restaurant')}</small><strong>${score===null?'—':score} <i>overall</i></strong></span>
+    </button>`;
+  }).join("");
+  return `<div class="constellation-paper" style="width:${size}px;height:${size}px">
+    <svg class="constellation-lines" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${cx}" cy="${cy}" r="${ringStart}" fill="none" stroke-dasharray="3 12" opacity=".12"/>${lines}</svg>
+    <div class="constellation-hub" style="left:${cx-centerSize/2}px;top:${cy-centerSize/2}px;width:${centerSize}px;height:${centerSize}px">
+      ${locImage?`<img src="${esc(locImage)}" alt="">`:''}<span class="orbit-shade"></span><div class="orbit-copy"><span class="hub-marker">LOCATION PASSPORT</span><b>${esc(location)}</b><strong>${sorted.length} ${sorted.length===1?'restaurant':'restaurants'}</strong><small>Average overall ${avg}</small></div>
+    </div>${leafs}
+  </div><p class="constellation-help">Select any restaurant bubble to open its profile. Drag or scroll horizontally on narrow screens to explore the network.</p>`;
+}
+function renderMap(data){
+  const groups={};
+  data.forEach(e=>{
+    const label=e.location?.trim()||"No location",key=locationKey(label);
+    if(!groups[key])groups[key]={location:label,items:[]};
+    groups[key].items.push(e);
+  });
+  const locations=Object.values(groups).map(({location,items})=>({
+    location,items,count:items.length,avgOverall:(()=>{const xs=items.map(overallScoreRaw).filter(x=>x!==null);return xs.length?roundToTwoSigFigs(xs.reduce((s,x)=>s+x,0)/xs.length):null})(),
+    image:getLocationImage(location)
+  })).sort((a,b)=>b.count-a.count || (b.avgOverall||0)-(a.avgOverall||0) || a.location.localeCompare(b.location)).map(g=>({...g,size:Math.min(210,Math.max(88,70*Math.sqrt(g.count)))}));
+
+  const stage=$("bubbleStage");
+  if(!locations.length){stage.innerHTML='<div class="bubble-empty">Add restaurant locations to build your bubble graph.</div>';return}
+  if(window.matchMedia('(max-width: 650px)').matches){
+    stage.classList.add('mobile-locations-stage');stage.style.height='auto';
+    stage.innerHTML=locations.map(g=>{const photo=g.image?`background-image:linear-gradient(rgba(10,10,10,.3),rgba(10,10,10,.73)),url(${g.image});`:'background:#292621;';
+      return `<button class="location-bubble" data-location-bubble="${esc(g.location)}" style="${photo}" title="${g.count} restaurants"><b>${esc(g.location)}</b><span>${g.count} ${g.count===1?'restaurant':'restaurants'}</span><small>Avg ${g.avgOverall||'—'}</small></button>`}).join('');
+  }else{
+    stage.classList.remove('mobile-locations-stage');
+    const packed=bubblePack(locations);stage.style.height=packed.height+"px";
+  stage.innerHTML=packed.placed.map(g=>{
+    const bg=g.image?`background-image:linear-gradient(rgba(18,18,16,.28),rgba(18,18,16,.66)),url(${g.image});`:`background:#24241f;`;
+    return `<button class="location-bubble" data-location-bubble="${esc(g.location)}" style="left:${g.x-g.r}px;top:${g.y-g.r}px;width:${g.size}px;height:${g.size}px;${bg}" title="${g.count} restaurants">
+      <b>${esc(g.location)}</b><span>${g.count} ${g.count===1?"restaurant":"restaurants"}</span><small>Avg ${g.avgOverall||"—"}</small>
+    </button>`;
+  }).join("");
+
+  }
+  if(mapLocationFocus && !groups[locationKey(mapLocationFocus)])mapLocationFocus=null;
+  if(mapLocationFocus){
+    const group=groups[locationKey(mapLocationFocus)];
+    const items=group?.items||[];
+    const xs=items.map(overallScoreRaw).filter(x=>x!==null);
+    $("bubbleOverview").style.display="none";
+    $("locationDetail").classList.add("show");
+    $("locationDetailTitle").textContent=mapLocationFocus;
+    $("locationDetailSub").textContent=`${items.length} ${items.length===1?"restaurant":"restaurants"} · average overall ${xs.length?roundToTwoSigFigs(xs.reduce((s,x)=>s+x,0)/xs.length):"—"}`;
+    $("locationDetailGrid").innerHTML=renderLocationConstellation(group.location,items);
+    const network=$("locationDetailGrid");network.scrollLeft=Math.max(0,(network.scrollWidth-network.clientWidth)/2);
+  }else{
+    $("bubbleOverview").style.display="block";
+    $("locationDetail").classList.remove("show");
+  }
+}
+function openLocationBubble(location,button){
+  button.classList.add("bursting");
+  setTimeout(()=>{mapLocationFocus=location;renderMap(filtered())},320);
+}
+function backToBubbleGraph(){mapLocationFocus=null;renderMap(filtered())}
+function renderCuisineCard(c,provisional=false){
+  const ranks=grandRankMap();
+  return `<article class="cuisine-card ${provisional?"provisional":""}">
+    <div class="c-rank">${provisional?`${c.count}/3 restaurants · provisional`:`Cuisine rank #${c.cuisineRank}`}</div>
+    <h3>${esc(c.cuisine)}</h3>
+    <div class="cuisine-metrics">
+      <div><span>Median position</span><b>${c.medianPos.toFixed(1)}</b></div>
+      <div><span>Average position</span><b>${c.avgPos.toFixed(1)}</b></div>
+      <div><span>Average score</span><b>${c.avgScore.toFixed(1)}</b></div>
+      <div><span>Restaurants</span><b>${c.count}</b></div>
+      <div><span>Best entry</span><b>#${ranks.get(c.best.id)} · ${esc(c.best.restaurant)} (${overallScore(c.best)??"—"})</b></div>
+      <div><span>Worst entry</span><b>#${ranks.get(c.worst.id)} · ${esc(c.worst.restaurant)} (${overallScore(c.worst)??"—"})</b></div>
+    </div>
+  </article>`;
+}
+function leaderboardAvatar(img,label){
+  return `<div class="leader-avatar">${img?`<img src="${esc(img)}" alt="">`:`<span>${esc((label||'?').trim()[0]||'?')}</span>`}</div>`;
+}
+function leaderboardStage(rows,kind,showRows=true){
+  if(!rows.length)return '<p class="feature-muted">No qualified results yet.</p>';
+  const byRank=[rows[1],rows[0],rows[2]];
+  const renderSpot=(r,position)=>r?`<div class="leader-spot pos-${position}">
+    <div class="leader-person">${leaderboardAvatar(r.image,r.name)}<div><strong>${esc(r.name)}</strong><small>${esc(r.sub)}</small></div></div>
+    <div class="leader-block"><span>${position}</span><small>${esc(r.metric)}</small></div>
+  </div>`:`<div class="leader-spot empty pos-${position}"></div>`;
+  return `<div class="leaderboard-shell"><div class="leaderboard-overline">RECOLLEAT · ${esc(kind)} CHAMPIONS</div><div class="leader-podium">${renderSpot(byRank[0],2)}${renderSpot(byRank[1],1)}${renderSpot(byRank[2],3)}</div>
+    ${showRows?`<div class="leader-rows">${rows.map((r,i)=>`<div class="leader-row"><span class="leader-row-number">${i+1}</span>${leaderboardAvatar(r.image,r.name)}<div class="leader-row-name">${r.id?`<button type="button" data-open-passport="${esc(r.id)}">${esc(r.name)}</button>`:`<strong>${esc(r.name)}</strong>`}<small>${esc(r.sub)}</small></div><strong>${esc(r.metric)}</strong></div>`).join('')}</div>`:''}
+  </div>`;
+}
+function renderCuisineView(){
+  const {eligible,provisional}=cuisineStats();
+  const rows=eligible.map(c=>({name:c.cuisine,sub:`${c.count} restaurants · Avg food ${c.avgScore.toFixed(1)}`,metric:`Median #${c.medianPos.toFixed(1)}`,image:c.best?.photos?.[0]||getLocationImage(c.best?.location)}));
+  $("cuisinePodium").innerHTML=leaderboardStage(rows,"CUISINE");
+  $("cuisineGrid").innerHTML=eligible.length?`<details class="leader-extra"><summary>Explore detailed cuisine statistics</summary><div class="cuisine-grid">${eligible.map(c=>renderCuisineCard(c,false)).join("")}</div></details>`:'<div class="reco-empty-state"><b>No qualified cuisine yet</b><p>A cuisine enters the podium after three restaurants are recorded. Your earlier entries still count.</p><button type="button" data-empty-action="add-restaurant">Add restaurant</button></div>';
+  const heading=$("cuisineGrid").previousElementSibling;if(heading)heading.style.display="none";
+  $("provisionalCuisineGrid").innerHTML=provisional.length?provisional.map(c=>renderCuisineCard(c,true)).join(""):'<div class="reco-empty-state"><b>Your cuisine collection is empty</b><p>Add restaurant cuisines and this ranking builds automatically.</p><button type="button" data-empty-action="add-restaurant">Add restaurant</button></div>';
+}
+function monthKeyFromDate(dateStr){return String(dateStr||"").slice(0,7)}
+function selectedMonthKey(){return `${visitMonthCursor.getFullYear()}-${String(visitMonthCursor.getMonth()+1).padStart(2,"0")}`}
+function formatMonth(d){return d.toLocaleDateString("en-GB",{month:"long",year:"numeric"})}
+function formatVisitDate(s){if(!s)return "Date unknown";const d=new Date(s+"T12:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}
+function monthlySpendSeries(){
+  const result=[],base=new Date(visitMonthCursor.getFullYear(),visitMonthCursor.getMonth(),1);
+  for(let i=11;i>=0;i--){
+    const d=new Date(base.getFullYear(),base.getMonth()-i,1);
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    const total=visits.filter(v=>monthKeyFromDate(v.date)===key).reduce((s,v)=>s+Number(v.spend||0),0);
+    result.push({key,label:d.toLocaleDateString("en-GB",{month:"short"}),total});
+  }
+  return result;
+}
+let selectedCalendarDate='',calendarShowingWholeMonth=false,calendarDisplayMode='calendar';
+function changeCalendarMode(mode){
+  calendarDisplayMode=mode==='wrapped'?'wrapped':'calendar';
+  const root=$("visitView");root.dataset.visitMode=calendarDisplayMode;
+  for(const [which,id] of [['calendar','visitCalendarTab'],['wrapped','visitWrappedTab']]){
+    const b=$(id),active=which===calendarDisplayMode;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;
+  }
+}
+function renderVisitHistory(){
+  const key=selectedMonthKey(), restaurantMap=new Map(entries.map(e=>[e.id,e]));
+  $("calendarMonthLabel").textContent=formatMonth(visitMonthCursor);if($("calendarMonthJump"))$("calendarMonthJump").value=key;
+  const monthPicker=$("recoVisitedMonthSelect");
+  if(monthPicker){
+    const available=[...new Set(visits.map(v=>monthKeyFromDate(v.date)).filter(m=>/^\d{4}-\d{2}$/.test(m)))].sort().reverse();
+    const fingerprint=available.join('|');
+    if(monthPicker.dataset.months!==fingerprint){monthPicker.dataset.months=fingerprint;
+      monthPicker.innerHTML='<option value="">Months with visits</option>'+available.map(m=>`<option value="${m}">${new Date(m+'-01T12:00:00').toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</option>`).join('');
+    }
+    monthPicker.value=available.includes(key)?key:'';
+    monthPicker.hidden=!available.length;
+  }
+  const monthVisits=visits.filter(v=>monthKeyFromDate(v.date)===key).sort((a,b)=>a.date.localeCompare(b.date));
+  const uniqueRestaurantIds=[...new Set(monthVisits.map(v=>v.restaurantId).filter(id=>restaurantMap.has(id)))];
+  $("monthVisitCount").textContent=monthVisits.length;
+  $("monthRestaurantCount").textContent=uniqueRestaurantIds.length;
+  const paidSummary=sumRecordedMoney(monthVisits,'spend'),foodSummary=sumRecordedMoney(monthVisits,'foodValue');
+  $("monthSpendTotal").textContent=paidSummary.count?`£${paidSummary.total.toFixed(2)}`:'—';
+  $("monthFoodValue").textContent=foodSummary.count?`£${foodSummary.total.toFixed(2)}`:'—';
+  $("monthPersonalCoverage").textContent=`${paidSummary.count} of ${monthVisits.length} visits recorded`;
+  $("monthFoodValueCoverage").textContent=`${foodSummary.count} of ${monthVisits.length} visits recorded`;
+  $("monthTreatedCount").textContent=monthVisits.filter(v=>v.paidFor).length;
+
+  const grouped={};monthVisits.forEach(v=>{if(!grouped[v.restaurantId])grouped[v.restaurantId]=[];grouped[v.restaurantId].push(v)});
+  $("monthRestaurants").innerHTML=uniqueRestaurantIds.length?uniqueRestaurantIds.map(id=>{
+    const e=restaurantMap.get(id),arr=grouped[id]||[],paid=sumRecordedMoney(arr,'spend'),food=sumRecordedMoney(arr,'foodValue');
+    return `<div class="month-rest-row"><div><b>${esc(e.restaurant)}</b><span>${arr.length} ${arr.length===1?"visit":"visits"} · Food ${food.count?moneyLabel(food.total):'—'}</span></div><b>${paid.count?moneyLabel(paid.total):'—'} <small>paid</small></b></div>`;
+  }).join(""):'<div class="visit-empty reco-calendar-empty"><strong>Nothing logged this month yet</strong><p>Save a visit to remember where you ate and what you personally paid.</p><button type="button" data-v44-new-visit>Add a visit</button></div>';
+
+  const year=visitMonthCursor.getFullYear(),month=visitMonthCursor.getMonth(),firstDay=new Date(year,month,1),daysInMonth=new Date(year,month+1,0).getDate();
+  const mondayIndex=(firstDay.getDay()+6)%7;
+  const heads=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="cal-head">${d}</div>`).join("");
+  const today=new Date(), todayISO=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  if(!selectedCalendarDate.startsWith(key))selectedCalendarDate=monthVisits.length?monthVisits[monthVisits.length-1].date:(todayISO.startsWith(key)?todayISO:`${key}-01`);
+  let cells="";for(let i=0;i<mondayIndex;i++)cells+='<span class="cal-day empty-day" aria-hidden="true"></span>';
+  for(let day=1;day<=daysInMonth;day++){
+    const ds=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    const count=monthVisits.filter(v=>v.date===ds).length;
+    const selected=selectedCalendarDate===ds;
+    cells+=`<button type="button" class="cal-day${selected?' is-selected':''}${count?' has-visits':''}${ds===todayISO?' is-today':''}" data-calendar-date="${ds}" aria-pressed="${selected}" aria-label="${day} ${formatMonth(visitMonthCursor)}, ${count} ${count===1?'visit':'visits'}"><span class="cal-num">${day}</span>${count?`<span class="cal-dot" aria-hidden="true"></span>`:''}</button>`;
+  }
+  $("calendarGrid").innerHTML=heads+cells;
+
+  const undated=visits.filter(v=>!v.date).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+  const pendingLegacy=entries.reduce((n,e)=>n+Math.max(0,Number(e.manualVisitCount||0)-restaurantVisits(e.id).length),0);
+  $("undatedVisitCount").textContent=undated.length+pendingLegacy;
+  $("undatedVisitLog").innerHTML=(undated.length?undated.map(v=>{
+    const e=restaurantMap.get(v.restaurantId);
+    return `<div class="visit-log-row"><div class="date">Date unknown</div><div><b>${esc(e?.restaurant||"Deleted restaurant")}</b><div class="muted">${esc(v.note||"Visit remembered, date not recorded")}${(v.dishes||[]).length?` · ${v.dishes.length} dishes`:''}${v.foodRating!==null?` · Food ${v.foodRating}/100`:''}</div></div><div class="spend">${visitCostDetails(v)}</div><button data-edit-visit="${esc(v.id)}">Edit</button></div>`;
+  }).join(""):"")+(pendingLegacy?`<div class="visit-empty">${pendingLegacy} older visit${pendingLegacy===1?"":"s"} stored as totals only. Open each restaurant's editor to assign optional dates.</div>`:"")||'<div class="visit-empty">No undated visits recorded.</div>';
+
+  const focusedVisits=calendarShowingWholeMonth?monthVisits:monthVisits.filter(v=>v.date===selectedCalendarDate);
+  const label=$("calendarSelectionLabel");if(label)label.textContent=calendarShowingWholeMonth?`Visits in ${formatMonth(visitMonthCursor)}`:`Visits on ${formatVisitDate(selectedCalendarDate)}`;
+  const showMonth=$("calendarShowMonth");if(showMonth){showMonth.textContent=calendarShowingWholeMonth?'Selected day':'All month';showMonth.setAttribute('aria-pressed',String(calendarShowingWholeMonth));}
+  const unknownCount=$("undatedVisitSummaryCount");if(unknownCount)unknownCount.textContent=String(undated.length+pendingLegacy);
+  $("visitLog").innerHTML=focusedVisits.length?[...focusedVisits].sort((a,b)=>b.date.localeCompare(a.date)).map(v=>{
+    const e=restaurantMap.get(v.restaurantId);
+    return `<div class="visit-log-row"><div class="date">${formatVisitDate(v.date)}</div><div><b>${esc(e?.restaurant||"Deleted restaurant")}</b><div class="muted">${esc(v.note||"")}${(v.dishes||[]).length?` · ${v.dishes.length} dishes`:''}${v.foodRating!==null?` · Food ${v.foodRating}/100`:''}</div></div><div class="spend">${visitCostDetails(v)}</div><button data-edit-visit="${v.id}">Edit</button></div>`;
+  }).join(""):'<div class="visit-empty reco-calendar-empty">No visits on this day. <button type="button" data-v44-new-visit>Log a visit</button></div>';
+
+  const series=monthlySpendSeries(),max=Math.max(1,...series.map(x=>x.total));
+  $("spendChart").innerHTML=series.map(x=>`<div class="spend-bar-wrap"><div class="spend-bar-value">${x.total?`£${x.total.toFixed(0)}`:""}</div><div class="spend-bar" style="height:${Math.max(2,(x.total/max)*150)}px"></div><div class="spend-bar-label">${x.label}</div></div>`).join("");
+
+  if(!monthVisits.length){$("wrappedReport").innerHTML=`<div class="monthly-wrapped-head"><div><span class="feature-kicker">RECOLLEAT WRAPPED</span><h3>${formatMonth(visitMonthCursor)}</h3></div></div><div class="wrapped-empty">Log visits in this month to unlock a private monthly food report with a headline story, standout restaurant, monthly spend snapshot and personal highlights.</div>`;return}
+  const monthRestaurants=uniqueRestaurantIds.map(id=>restaurantMap.get(id)).filter(Boolean);
+  const cuisineCounts={}, locationCounts={};
+  monthRestaurants.forEach(e=>{if(e.cuisine)cuisineCounts[e.cuisine]=(cuisineCounts[e.cuisine]||0)+1;if(e.location)locationCounts[e.location]=(locationCounts[e.location]||0)+1});
+  const topRestaurant=[...uniqueRestaurantIds].map(id=>({id,count:(grouped[id]||[]).length,total:(grouped[id]||[]).reduce((s,v)=>s+Number(v.spend||0),0),e:restaurantMap.get(id)})).sort((a,b)=>b.count-a.count||b.total-a.total)[0]||null;
+  const bestOverall=monthRestaurants.filter(Boolean).sort((a,b)=>(overallScore(b)??-1)-(overallScore(a)??-1))[0]||null;
+  const avgSpend=paidSummary.count?paidSummary.total/paidSummary.count:null;
+  const topCuisine=Object.entries(cuisineCounts).sort((a,b)=>b[1]-a[1])[0]||null;
+  const topLocation=Object.entries(locationCounts).sort((a,b)=>b[1]-a[1])[0]||null;
+  const mostExpensive=monthVisits.slice().sort((a,b)=>Number(b.spend||0)-Number(a.spend||0))[0]||null;
+  const priceyRestaurant=mostExpensive?restaurantMap.get(mostExpensive.restaurantId):null;
+  const storyLead=topRestaurant?.e?.restaurant?`${topRestaurant.e.restaurant} led your month with ${topRestaurant.count} ${topRestaurant.count===1?'visit':'visits'}, while ${bestOverall?.restaurant||'your highest-scored spot'} set the benchmark for quality.`:'Your month is ready to be wrapped.';
+  $("wrappedReport").innerHTML=`<div class="monthly-wrapped-head"><div><span class="feature-kicker">RECOLLEAT WRAPPED</span><h3>${formatMonth(visitMonthCursor)} · monthly food report</h3></div><div class="feature-mark">✦</div></div><div class="wrapped-hero"><span>Monthly headline</span><b>${esc(topRestaurant?.e?.restaurant||'Your month in food')}</b><p>${esc(storyLead)} You personally paid ${paidSummary.count?`£${paidSummary.total.toFixed(2)}`:'an unrecorded amount'}, while food value was ${foodSummary.count?`£${foodSummary.total.toFixed(2)}`:'not recorded'} across ${monthVisits.length} ${monthVisits.length===1?'visit':'visits'}. ${monthVisits.filter(v=>v.paidFor).length} ${monthVisits.filter(v=>v.paidFor).length===1?'meal was':'meals were'} treated.</p></div><div class="monthly-wrapped-grid"><article class="wrapped-card"><span>Restaurant of the month</span><b>${esc(topRestaurant?.e?.restaurant||'—')}</b><small>${topRestaurant?`${topRestaurant.count} visits · £${topRestaurant.total.toFixed(2)} spent`:'No visits logged'}</small></article><article class="wrapped-card"><span>Best scored visit set</span><b>${esc(bestOverall?.restaurant||'—')}</b><small>${bestOverall&&overallScore(bestOverall)!==null?`Overall score ${overallScore(bestOverall)}`:'Needs an overall score'}</small></article><article class="wrapped-card"><span>Cuisine of the month</span><b>${esc(topCuisine?.[0]||'—')}</b><small>${topCuisine?`${topCuisine[1]} restaurant${topCuisine[1]===1?'':'s'} visited`:'No cuisine data yet'}</small></article><article class="wrapped-card"><span>Location of the month</span><b>${esc(topLocation?.[0]||'—')}</b><small>${topLocation?`${topLocation[1]} restaurant${topLocation[1]===1?'':'s'} from this location`:'No locations logged'}</small></article><article class="wrapped-card"><span>Average personally paid</span><b>${avgSpend===null?'—':`£${avgSpend.toFixed(2)}`}</b><small>${paidSummary.count} visit${paidSummary.count===1?'':'s'} with payment amounts</small></article><article class="wrapped-card"><span>Food value &amp; treats</span><b>${foodSummary.count?`£${foodSummary.total.toFixed(2)}`:'—'}</b><small>${monthVisits.filter(v=>v.paidFor).length} treated · ${foodSummary.count} logged values</small></article></div>`;
+}
+function populateVisitRestaurantSelect(selectedId=""){
+  $("visitRestaurantList").innerHTML=[...entries].sort((a,b)=>a.restaurant.localeCompare(b.restaurant)).map(e=>`<option value="${esc(visitDisplayValue(e))}"></option>`).join("");
+  const selected=entries.find(e=>e.id===selectedId);
+  $("visitRestaurantSearch").value=selected?visitDisplayValue(selected):"";
+}
+function readMoneyInput(input){const raw=input.value.trim();if(raw==='')return null;const value=Number(raw);return Number.isFinite(value)&&value>=0&&value<=10000000?Math.round(value*100)/100:undefined;}
+function updateVisitTreat(){
+ const treated=$("visitPaidFor").checked,spend=$("visitSpend");
+ if(treated){if(!spend.disabled)spend.dataset.previousAmount=spend.value;spend.value='0.00';spend.disabled=true}
+ else{if(spend.disabled)spend.value=spend.dataset.previousAmount||'';spend.disabled=false}
+ $("visitCostHint").textContent=treated?'Your personal payment is £0. The food value still counts towards your meal history.':'Only entered amounts appear in totals. Part-paid meals can have different food value and personal spending.';
+}
+function openNewVisit(){
+  editingVisitId=null;$("visitDialogTitle").textContent="Log visit";populateVisitRestaurantSelect();
+  const today=new Date();$("visitDate").value=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;$("visitFoodValue").value="";$("visitSpend").value="";$("visitPaidFor").checked=false;$("visitNote").value="";$("deleteVisitBtn").style.visibility="hidden";updateVisitTreat();prepareV45VisitForm(null);$("visitDialog").showModal();
+}
+function openVisitForRestaurant(id){
+  const entry=entries.find(x=>x.id===id);if(!entry)return;
+  openNewVisit();populateVisitRestaurantSelect(id);
+  const now=new Date();$("visitDate").value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  $("visitNote").focus();
+}
+function openEditVisit(id){
+  const v=visits.find(x=>x.id===id);if(!v)return;editingVisitId=id;$("visitDialogTitle").textContent="Edit visit";populateVisitRestaurantSelect(v.restaurantId);
+  $("visitDate").value=v.date;$("visitFoodValue").value=v.foodValue===null?"":v.foodValue;$("visitSpend").value=v.spend===null?"":v.spend;$("visitPaidFor").checked=!!v.paidFor;$("visitNote").value=v.note;$("deleteVisitBtn").style.visibility="visible";updateVisitTreat();prepareV45VisitForm(v);$("visitDialog").showModal();
+}
+async function saveVisit(){
+  const restaurantId=resolveVisitRestaurantId($("visitRestaurantSearch").value),date=$("visitDate").value;
+  if(!restaurantId){alert("Choose a restaurant.");return}
+  const old=editingVisitId?visits.find(v=>v.id===editingVisitId):null;
+  const paidFor=$("visitPaidFor").checked,foodValue=readMoneyInput($("visitFoodValue")),spend=paidFor?0:readMoneyInput($("visitSpend"));
+  if(foodValue===undefined||spend===undefined){notify('Enter valid positive amounts, or leave them blank.','error');return}
+  const details=collectV45VisitDetails();if(!details){return}
+  const v=normaliseVisit({id:editingVisitId||uid(),restaurantId,date,foodValue,spend,paidFor,note:$("visitNote").value.trim(),...details,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()});
+  const revised=visits.filter(x=>x.id!==v.id).concat(v),e=entries.find(x=>x.id===restaurantId);
+  const nextEntry=e&&!editingVisitId?{...e,manualVisitCount:Math.max(e.manualVisitCount||0,revised.filter(x=>x.restaurantId===e.id).length),updatedAt:new Date().toISOString()}:null;
+  try{const recovery=editingVisitId?buildRecoverySnapshot('Before editing a visit'):null;await mutateStores([...(recovery?[[SNAPSHOTS,'put',recovery]]:[]),[VISITS,'put',v],...(nextEntry?[[RESTAURANTS,'put',nextEntry]]:[])]);
+    visits=revised;if(nextEntry)entries=entries.map(x=>x.id===nextEntry.id?nextEntry:x);
+    if(date)visitMonthCursor=new Date(Number(date.slice(0,4)),Number(date.slice(5,7))-1,1);
+    $('visitDialog').close();render();notify('Visit logged.');
+  }catch(error){notify('Visit was not saved. Check device storage.','error');console.error(error)}
+}
+async function deleteVisit(){
+  if(!editingVisitId||!confirm("Delete this visit?"))return;
+  const old=visits.find(v=>v.id===editingVisitId), e=entries.find(x=>x.id===old?.restaurantId);
+  const before=e?effectiveVisitCount(e):0;
+  const revised=visits.filter(v=>v.id!==editingVisitId);
+  const nextEntry=e?{...e,manualVisitCount:Math.max(revised.filter(v=>v.restaurantId===e.id).length,before-1)}:null;
+  try{const snap=buildRecoverySnapshot('Before deleting a visit');await mutateStores([...(snap?[[SNAPSHOTS,'put',snap]]:[]),[VISITS,'delete',editingVisitId],...(nextEntry?[[RESTAURANTS,'put',nextEntry]]:[])]);
+    visits=revised;if(nextEntry)entries=entries.map(x=>x.id===nextEntry.id?nextEntry:x);
+    $('visitDialog').close();render();notify('Visit removed.');
+  }catch(error){notify('Visit could not be removed.','error');console.error(error)}
+}
+
+function renderLists(){
+  if(prefs.activeListId&&!lists.some(l=>l.id===prefs.activeListId))prefs.activeListId=null;
+  if(!prefs.activeListId&&lists.length)prefs.activeListId=lists[0].id;
+  $("savedLists").innerHTML=lists.length?lists.sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).map(l=>`<div class="saved-list ${l.id===prefs.activeListId?"active":""}" data-list-select="${l.id}"><b>${esc(l.name)}</b><span>${l.restaurantIds.length} ${l.restaurantIds.length===1?"restaurant":"restaurants"}</span></div>`).join(""):'<div class="muted">No lists yet.</div>';
+  const active=lists.find(l=>l.id===prefs.activeListId);
+  if(!active){$("listMain").innerHTML='<div class="list-empty"><div><b>No custom list selected.</b><br>Create one such as “Underrated places”, “Best dates” or “Worth the travel”.</div></div>';return}
+  const restaurantMap=new Map(entries.map(e=>[e.id,e]));
+  active.restaurantIds=active.restaurantIds.filter(id=>restaurantMap.has(id));
+  const available=entries.filter(e=>!active.restaurantIds.includes(e.id)).sort((a,b)=>a.restaurant.localeCompare(b.restaurant));
+  $("listMain").innerHTML=`
+    <div class="list-top"><div><h2>${esc(active.name)}</h2><p>${esc(active.description||"Custom ranked list")}</p></div>
+      <div class="list-actions"><button data-edit-list="${active.id}">Edit list</button></div></div>
+    <div class="add-to-list"><select id="addRestaurantSelect"><option value="">Choose a restaurant to add…</option>${available.map(e=>`<option value="${e.id}">${esc(e.restaurant)} · ${esc(e.location||"No location")}</option>`).join("")}</select><button id="addRestaurantToList" class="primary">Add</button></div>
+    <div class="ranked-list">${active.restaurantIds.length?active.restaurantIds.map((id,i)=>{const e=restaurantMap.get(id);return `<div class="ranked-row">
+      <div class="ranked-pos">#${i+1}</div><div class="ranked-info"><b>${esc(e.restaurant)}</b><span>${esc(e.cuisine||"Uncategorised")} · ${e.foodScore}/100 · grand-list #${grandRankMap().get(e.id)}</span></div>
+      <div class="ranked-actions"><button data-move-list="${active.id}" data-index="${i}" data-dir="-1" ${i===0?"disabled":""}>↑</button><button data-move-list="${active.id}" data-index="${i}" data-dir="1" ${i===active.restaurantIds.length-1?"disabled":""}>↓</button><button data-remove-from-list="${active.id}" data-rid="${e.id}">Remove</button></div>
+    </div>`}).join(""):'<div class="muted">Add restaurants above, then reorder them into your ranking.</div>'}</div>`;
+  const add=$("addRestaurantToList"); if(add)add.onclick=()=>addSelectedRestaurantToList(active.id);
+}
+let visibleTableRows=150,visibleCardRows=72;
+function render(){
+  updateEarnedRewards();refreshLists();const data=filtered(),ranks=grandRankMap();renderStats(data);renderChips();renderSortMarks();
+  $("tbody").innerHTML=data.slice(0,visibleTableRows).map(e=>{const rv=restaurantVisits(e.id),latest=latestVisitDate(e);return `<tr>
+  <td><span class="rank">#${ranks.get(e.id)}</span></td>
+  <td><button class="name-btn" data-open-passport="${e.id}"><span class="name">${esc(e.restaurant)}</span></button></td>
+  <td>${overallScore(e)===null?'<span class="muted">—</span>':`<span class="overall-score" style="background:${scoreColor(overallScore(e))}">${overallScore(e)}</span>`}</td>
+  <td>${e.cuisine?`<span class="pill">${esc(e.cuisine)}</span>`:'<span class="muted">—</span>'}</td>
+  <td><span class="score" style="background:${scoreColor(e.foodScore)}">${e.foodScore}</span></td>
+  <td><div class="photo-row">${e.photos.length?e.photos.slice(0,5).map((p,i)=>`<img loading="lazy" src="${esc(p)}" alt="Photo of ${esc(e.restaurant)}" role="button" tabindex="0" aria-label="Enlarge photo ${i+1} of ${esc(e.restaurant)}" data-photo="${e.id}" data-index="${i}">`).join(""):'<span class="muted">—</span>'}</div></td>
+  <td>${e.valueScore===null?'<span class="muted">—</span>':`<span class="score" style="background:${scoreColor(e.valueScore)}">${Math.round(e.valueScore)}</span>`}</td>
+  <td><div class="dishes">${e.items.length?e.items.slice(0,3).map((i,idx)=>`<div class="dish"><span>${starredDishIndexes(e.items).has(idx)?"★ ":""}${esc(i.name)}</span><b>${Number(i.rating).toFixed(1)}/10</b></div>`).join("")+(e.items.length>3?`<div class="dish"><span class="muted">+${e.items.length-3} more</span><b></b></div>`:""):'<span class="muted">—</span>'}</div></td>
+  <td><span class="${serviceClass(e.service)}">${esc(e.service)}</span></td>
+  <td><div class="vibes">${e.vibes.length?e.vibes.map(v=>`<span class="vibe">${esc(v)}</span>`).join(""):'<span class="muted">—</span>'}</div></td>
+  <td><b>${ppText(e.pp)}</b></td>
+  <td>${esc(e.location)||'<span class="muted">—</span>'}${e.international?'<span class="tag-international">International</span>':""}</td>
+  <td>${esc(e.notes)||'<span class="muted">—</span>'}</td>
+  <td class="visit-cell"><b>${shortDate(latest)}</b></td>
+  <td class="visit-cell"><b>${visitDisplayCount(e)}</b><span>${effectiveVisitCount(e)===1?"visit":"visits"}${rv.some(v=>!v.date)?` · ${rv.filter(v=>!v.date).length} date unknown`:""}</span></td>
+  <td><button data-edit="${e.id}">Edit</button></td>
+</tr>`}).join("");
+  $("emptyTable").style.display=data.length?"none":"block";renderMobileHome(data,ranks);
+  const searchStatus=$("recoSearchResultStatus");
+  if(searchStatus){const query=$("search").value.trim(),active=Object.values(prefs.filters||{}).some(value=>value!==''&&value!==null&&value!==undefined);
+    searchStatus.hidden=!(query||active);
+    searchStatus.textContent=(query||active)?`${data.length} of ${entries.length} restaurants match${query?` · ${query}`:''}`:'';
+  }
+  $("cardView").innerHTML=data.slice(0,visibleCardRows).map(e=>`<article class="card"><div class="cover">${e.photos.length?`<img loading="lazy" src="${esc(e.photos[0])}" data-photo="${e.id}" data-index="0">`:"No photo"}</div>
+  <div class="card-body"><div class="card-head"><div><h3>#${ranks.get(e.id)} · <button class="name-btn" data-open-passport="${e.id}">${esc(e.restaurant)}</button></h3><div class="meta">${esc(e.cuisine||"Uncategorised")} · ${esc(e.location||"No location")}</div></div>${overallScore(e)===null?'<span class="muted">—</span>':`<span class="overall-score" style="background:${scoreColor(overallScore(e))}">${overallScore(e)}</span>`}</div>
+  <div class="mini-grid"><div class="mini"><span>Food</span><b>${e.foodScore}</b></div><div class="mini"><span>Value</span><b>${e.valueScore===null?"—":Math.round(e.valueScore)}</b></div><div class="mini"><span>Service</span><b><span class="${serviceClass(e.service)}">${esc(e.service)}</span></b></div><div class="mini"><span>Visits</span><b>${visitDisplayCount(e)}</b></div></div>
+  <div class="card-actions"><button type="button" data-open-passport="${esc(e.id)}">View passport</button><button data-edit="${e.id}">Edit</button></div></div></article>`).join("");
+  $('recoTableMore').hidden=data.length<=visibleTableRows;
+  $('recoTableMore').textContent=`Show more restaurants · ${Math.min(data.length,visibleTableRows)} of ${data.length}`;
+  $('recoCardMore').hidden=data.length<=visibleCardRows;
+  $('recoCardMore').textContent=`Load ${Math.min(24,Math.max(0,data.length-visibleCardRows))} more restaurants`;
+  renderMap(data);renderCuisineView();renderGraph(data);renderLists();renderVisitHistory();renderV45AnnualFinance();renderWrappedStories();renderLab();renderDishes();renderDNA();renderProfile();renderV44Pulse();renderV45Home();renderBackupStatus();applyAppearance();updateDreamHub();applyView();$("storageStatus").textContent=`Saved locally · ${entries.length} restaurants · ${lists.length} custom lists`;
+}
+function applySidebarState(){
+  const app=document.querySelector(".app");app.classList.toggle("sidebar-collapsed",!!prefs.sidebarCollapsed);
+  const collapsed=!!prefs.sidebarCollapsed;
+  $("sidebarToggle").textContent=collapsed?"›":"‹";
+  $("sidebarToggle").setAttribute("aria-label",collapsed?"Expand sidebar":"Collapse sidebar");
+  $("sidebarToggle").title=collapsed?"Expand sidebar":"Collapse sidebar";
+}
+function toggleSidebar(){
+  if(window.matchMedia("(max-width:850px)").matches){setMobileSidebarOpen(false);return}
+  prefs.sidebarCollapsed=!prefs.sidebarCollapsed;savePrefs();applySidebarState();
+  if(prefs.sidebarCollapsed)document.querySelectorAll(".app-sidebar .popover").forEach(m=>m.classList.remove("show"));
+}
+function ensureSidebarExpanded(){
+  if(prefs.sidebarCollapsed){prefs.sidebarCollapsed=false;savePrefs();applySidebarState()}
+}
+function setMobileSidebarOpen(open){
+  document.querySelector(".app").classList.toggle("sidebar-mobile-open",!!open);
+  $("mobileSidebarBtn").setAttribute("aria-expanded",open?"true":"false");
+}
+function applyView(){
+  if(prefs.view==='dna')prefs.view='dishes';
+  const v=prefs.view==="battles"?"table":(prefs.view||"table");if(prefs.view==="battles"){prefs.view="table";savePrefs()}$("tableView").style.display=v==="table"?"block":"none";$("cardView").style.display=v==="cards"?"grid":"none";$("mapView").style.display=v==="map"?"grid":"none";$("cuisineView").style.display=v==="cuisines"?"block":"none";$("graphView").style.display=v==="graph"?"grid":"none";$("listView").style.display=v==="lists"?"grid":"none";$("visitView").style.display=v==="visits"?"block":"none";$("labView").style.display=v==="lab"?"flex":"none";$("dishesView").style.display=v==="dishes"?"flex":"none";$("dnaView").style.display="none";$("profileView").style.display=v==="profile"?"block":"none";$("privacyView").style.display=v==="privacy"?"block":"none";$("helpView").style.display=v==="help"?"block":"none";$("grandListTools").style.display=(v==="table"||v==="graph")?"flex":"none";$("grandListTools").classList.toggle("is-graph",v==="graph");document.querySelector(".app").classList.toggle("is-profile",v==="profile");document.querySelector(".app").classList.toggle("is-journal-home",v==="home");if(v==="map")renderMap(filtered());if(v==="graph")renderGraph(filtered());
+  document.querySelector(".stats").style.display=(v==="table"||v==="cards"||v==="graph")?"grid":"none";
+  document.querySelectorAll("[data-view]").forEach(b=>{const isSidebarGrandList=b.closest(".sidebar-nav")&&b.dataset.view==="table"&&v==="graph";const active=b.dataset.view===v||isSidebarGrandList;b.classList.toggle("active",active);if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
+mobileApplyNavigation(v);
+  // Pagination belongs only to the view it controls, never to Calendar, Places or Profile.
+  const collectionLength=filtered().length;
+  if($('recoCardMore'))$('recoCardMore').hidden=v!=='cards'||collectionLength<=visibleCardRows;
+  if($('recoTableMore'))$('recoTableMore').hidden=v!=='table'||window.matchMedia('(max-width:1100px)').matches||collectionLength<=visibleTableRows;
+  if($('recoPulse'))$('recoPulse').hidden=(v!=='home');
+  document.querySelectorAll('#mobileBottomNav [data-mobile-view]').forEach(b=>{const active=b.classList.contains('active');if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  const more=$('mobileMoreBtn');if(more){if(more.classList.contains('active'))more.setAttribute('aria-current','page');else more.removeAttribute('aria-current')}
+}
+function passportStamp(label,value,sub,rot){return `<div class="passport-stamp" style="--rot:${rot}deg"><span>${label}</span><b>${value}</b><small>${sub}</small></div>`}
+function openPhotoLightbox(src){
+  const dialog=$("lightbox");$("lightboxImg").src=src;
+  if(!dialog.open)dialog.showModal();
+  $("lightboxClose").focus({preventScroll:true});
+}
+function renderPassport(id){
+  const e=entries.find(x=>x.id===id);if(!e)return;
+  rememberRestaurant(id);
+  const history=restaurantVisits(id),locImg=getLocationImage(e.location),topDishIdx=starredDishIndexes(e.items);
+  const cover=e.photos?.[0]||locImg,overall=overallScore(e);
+  $("passportTitle").textContent=e.restaurant;
+  $("passportEditBtn").onclick=()=>{$("passportDialog").close();edit(id)};
+  $("passportLogVisitBtn").onclick=()=>{$("passportDialog").close();openVisitForRestaurant(id)};
+  $("passportContent").innerHTML=`<article class="compact-passport">
+    <div class="passport-hero">${cover?`<img src="${esc(cover)}" role="button" tabindex="0" data-passport-cover="${esc(e.id)}" aria-label="Enlarge restaurant cover photograph" alt="Restaurant cover photograph">`:''}
+      <div class="passport-hero-tint"></div><div class="passport-hero-inner"><span class="passport-kicker">RECOLLEAT · YOUR COLLECTION <b>#${grandRankMap().get(e.id)||'—'}</b></span><div class="passport-hero-score"><strong>${overall??'—'}</strong><span>OVERALL</span></div><h2>${esc(e.restaurant)}</h2><p>${esc(e.cuisine||'Uncategorised')} · ${esc(e.location||'No location')}${e.international?' · International':''}</p></div></div>
+    <div class="reco-passport-tabs" role="tablist" aria-label="Passport pages"><button type="button" class="active" role="tab" data-passport-page="ratings" aria-selected="true" id="passportTabRatings" aria-controls="passportRatingsPage">Ratings</button><button type="button" role="tab" data-passport-page="journal" aria-selected="false" id="passportTabJournal" aria-controls="passportJournalPage">Journal &amp; memories</button></div>
+    <section class="reco-passport-page" id="passportRatingsPage" role="tabpanel" aria-labelledby="passportTabRatings">
+    <div class="passport-score-strip"><div><span>FOOD</span><b>${e.foodScore}<small>/100</small></b></div><div><span>VALUE</span><b>${e.valueScore===null?'—':Math.round(e.valueScore)}<small>/100</small></b></div><div><span>SERVICE</span><b>${esc(e.service||'—')}</b></div></div>
+    </section><section class="reco-passport-page" id="passportJournalPage" role="tabpanel" aria-labelledby="passportTabJournal" hidden><div class="passport-meta"><span><b>${ppText(e.pp)}</b> per person</span><span><b>${visitDisplayCount(e)}</b> visits</span><span>Last: <b>${esc(shortDate(latestVisitDate(e)))}</b></span></div>
+    <div class="passport-accordion">
+      <details ${e.items.length?'open':''}><summary>Dishes <span>${e.items.length} rated items</span></summary><div class="passport-items">${e.items.length?e.items.map((i,idx)=>`<div class="passport-item"><span>${topDishIdx.has(idx)?'★ ':''}${esc(i.name)}</span><b>${Number(i.rating).toFixed(1)}/10</b></div>`).join(''):'<p class="muted">No dishes yet.</p>'}</div></details>
+      <details><summary>Visits <span>${history.length} logged</span></summary><div class="passport-items">${history.length?history.slice().reverse().map(v=>`<div class="reco-passport-visit"><div class="passport-item"><span><b>${formatVisitDate(v.date)}</b>${v.foodRating!==null?` · Food ${v.foodRating}/100`:''}</span>${visitCostDetails(v)}</div>${v.note?`<p>${esc(v.note)}</p>`:''}${(v.dishes||[]).length?`<div class="reco-visit-dish-tags">${v.dishes.map(i=>`<span>${esc(i.name)}${i.rating!==null?` · ${i.rating}/10`:''}${i.price!==null?` · £${Number(i.price).toFixed(2)}`:''}</span>`).join('')}</div>`:''}${(v.photos||[]).length?`<div class="reco-visit-gallery">${v.photos.map((src,i)=>`<img loading="lazy" data-visit-photo="${esc(v.id)}" data-index="${i}" src="${esc(src)}" alt="Photo of meal on ${esc(formatVisitDate(v.date))}" tabindex="0" role="button" />`).join('')}</div>`:''}</div>`).join(''):'<p class="muted">No logged visits yet.</p>'}</div></details>
+      <details><summary>Notes &amp; occasion <span>${esc(e.vibes.join(', ')||'Personal')}</span></summary><div class="passport-note">${esc(e.notes)||'<span class="muted">No notes yet.</span>'}</div></details>
+      <details><summary>Photographs <span>${e.photos.length} images</span></summary><div class="passport-photos">${e.photos.length?e.photos.slice(0,12).map((src,i)=>`<img src="${esc(src)}" data-photo="${esc(e.id)}" data-index="${i}" tabindex="0" role="button" aria-label="Enlarge restaurant photograph ${i+1}" alt="Restaurant photograph ${i+1}">`).join(''):'<p class="muted">No restaurant photos uploaded.</p>'}</div></details>
+      <details><summary>Location <span>${esc(e.location||'Unspecified')}</span></summary><div class="passport-note">${locImg?`<img class="passport-loc-image" src="${esc(locImg)}" data-location-photo="${esc(e.location)}" role="button" tabindex="0" aria-label="Enlarge location photograph" alt="Location photograph">`:''}<p>${esc(e.location||'No location set')}</p><button data-open-map="${esc(e.location)}">Explore location bubbles</button></div></details>
+    </div></section>
+  </article>`;
+  $("passportDialog").showModal();
+}
+function graphFiltersActive(){const g=prefs.graph.filters;return !!(g.location||g.cuisine||g.region||g.minFood!==""||g.minOverall!=="")}
+function graphFiltered(data){
+  const g=prefs.graph.filters||DEFAULT_PREFS.graph.filters;
+  return data.filter(e=>{
+    if(g.location&&locationKey(e.location)!==locationKey(g.location))return false;
+    if(g.cuisine&&e.cuisine!==g.cuisine)return false;
+    if(g.region==="international"&&!e.international)return false;
+    if(g.region==="uk"&&e.international)return false;
+    if(g.minFood!==""&&e.foodScore<Number(g.minFood))return false;
+    const ov=overallScoreRaw(e);
+    if(g.minOverall!==""&&(ov===null||ov<Number(g.minOverall)))return false;
+    return true;
+  });
+}
+function renderGraphFilterChips(){
+  const g=prefs.graph.filters,ch=[];
+  if(g.location)ch.push(["location",`Location: ${g.location}`]);
+  if(g.cuisine)ch.push(["cuisine",`Cuisine: ${g.cuisine}`]);
+  if(g.region)ch.push(["region",g.region==="international"?"International":"United Kingdom"]);
+  if(g.minFood!=="")ch.push(["minFood",`Food ≥ ${g.minFood}`]);
+  if(g.minOverall!=="")ch.push(["minOverall",`Overall ≥ ${g.minOverall}`]);
+  $("graphFilterChips").innerHTML=ch.map(([k,t])=>`<span class="graph-filter-chip">${esc(t)}<button type="button" data-clear-graph-filter="${k}">×</button></span>`).join("");
+}
+function graphRegression(points){
+  if(!points||points.length<3)return {ok:false,message:"Need at least 3 matching restaurants for a line of best fit."};
+  const xs=points.map(p=>p.x), ys=points.map(p=>p.y); const meanX=xs.reduce((a,b)=>a+b,0)/xs.length, meanY=ys.reduce((a,b)=>a+b,0)/ys.length;
+  const sxx=xs.reduce((s,x)=>s+Math.pow(x-meanX,2),0); if(Math.abs(sxx)<1e-9)return {ok:false,message:"A fitted line is unavailable because all x-values are identical."};
+  const syy=ys.reduce((s,y)=>s+Math.pow(y-meanY,2),0); const sxy=points.reduce((s,p)=>s+(p.x-meanX)*(p.y-meanY),0);
+  const slope=sxy/sxx, intercept=meanY-slope*meanX, r=syy<=1e-12?0:(sxy/Math.sqrt(sxx*syy)), r2=r*r;
+  return {ok:true,slope,intercept,r,r2,n:points.length,minX:Math.min(...xs),maxX:Math.max(...xs)};
+}
+function regressionSummary(reg){
+  if(!reg.ok)return reg.message;
+  const sign=reg.intercept>=0?"+":"−";
+  return `y = ${roundToTwoSigFigs(reg.slope)}x ${sign} ${roundToTwoSigFigs(Math.abs(reg.intercept))} · r = ${roundToTwoSigFigs(reg.r)} · R² = ${roundToTwoSigFigs(reg.r2)} · n = ${reg.n}`;
+}
+function renderGraphDetailRestaurant(e){
+  const cover=e.photos?.[0]||getLocationImage(e.location);
+  $("graphDetail").innerHTML=`<div class="passport-mini">${cover?`<img src="${esc(cover)}" style="width:100%;height:155px;object-fit:cover;border-radius:13px;margin-bottom:12px">`:""}<div class="profile-eyebrow">Restaurant card</div><h3>${esc(e.restaurant)}</h3><div class="meta">${esc(e.cuisine||"Uncategorised")} · ${esc(e.location||"No location")}</div><div class="profile-detail-grid"><div>Overall<b>${overallScore(e)??"—"}</b></div><div>Food<b>${e.foodScore}</b></div><div>Value<b>${e.valueScore===null?"—":Math.round(e.valueScore)}</b></div><div>Service<b>${esc(e.service)}</b></div></div><button class="primary" style="width:100%;margin-top:13px" data-open-passport="${e.id}">Open restaurant card</button></div>`;
+}
+function renderGraphDetailGroup(category,list,metric){$("graphDetail").innerHTML=`<div class="passport-mini"><div class="muted">Category selected</div><h3>${esc(category)}</h3><div>${list.length} ${list.length===1?"restaurant":"restaurants"} · average ${factorLabel(metric).toLowerCase()} <b>${roundToTwoSigFigs(list.map(e=>Number(factorValue(e,metric)||0)).reduce((s,x)=>s+x,0)/Math.max(1,list.length))}</b></div><div style="margin-top:10px">${list.slice(0,8).map(e=>`<div class="passport-item"><span><button class="name-btn" data-open-passport="${e.id}">${esc(e.restaurant)}</button></span><b>${overallScore(e)??"—"}</b></div>`).join("")}</div></div>`}
+function applyGraphZoom(){
+  const svg=$('graphSvg');const w=1000/graphZoom,h=560/graphZoom;
+  graphPan.x=Math.max(0,Math.min(1000-w,graphPan.x));graphPan.y=Math.max(0,Math.min(560-h,graphPan.y));
+  svg.setAttribute('viewBox',`${graphPan.x} ${graphPan.y} ${w} ${h}`);$('graphZoomLabel').textContent=`${Math.round(graphZoom*100)}%`;
+}
+function changeGraphZoom(multiplier,point=null){
+  const old=graphZoom,next=Math.max(1,Math.min(5,Math.round(graphZoom*multiplier*100)/100));if(next===old)return;
+  const newW=1000/next,newH=560/next,oldW=1000/old,oldH=560/old;
+  const fx=point?.x??.5,fy=point?.y??.5;
+  graphPan.x+=fx*(oldW-newW);graphPan.y+=fy*(oldH-newH);graphZoom=next;applyGraphZoom();
+}
+function resetGraphZoom(){graphZoom=1;graphPan={x:0,y:0};applyGraphZoom()}
+function bindGraphZoom(){
+  $('graphZoomIn').onclick=()=>changeGraphZoom(1.3);$('graphZoomOut').onclick=()=>changeGraphZoom(1/1.3);$('graphZoomReset').onclick=resetGraphZoom;
+  const svg=$('graphSvg');svg.addEventListener('wheel',ev=>{ev.preventDefault();const rect=svg.getBoundingClientRect();changeGraphZoom(ev.deltaY<0?1.17:1/1.17,{x:(ev.clientX-rect.left)/rect.width,y:(ev.clientY-rect.top)/rect.height})},{passive:false});
+  svg.addEventListener('pointerdown',ev=>{if(ev.target.closest('[data-graph-point],[data-graph-bar]')||graphZoom===1)return;graphDrag={x:ev.clientX,y:ev.clientY,panX:graphPan.x,panY:graphPan.y};svg.setPointerCapture(ev.pointerId);svg.style.cursor='grabbing'});
+  svg.addEventListener('pointermove',ev=>{if(!graphDrag)return;const rect=svg.getBoundingClientRect();graphPan.x=graphDrag.panX-(ev.clientX-graphDrag.x)*(1000/graphZoom)/rect.width;graphPan.y=graphDrag.panY-(ev.clientY-graphDrag.y)*(560/graphZoom)/rect.height;applyGraphZoom()});
+  const end=()=>{graphDrag=null;svg.style.cursor=''};svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end);
+}
+function renderGraph(data){
+  const svg=$("graphSvg"), note=$("graphNote"), xKey=$("graphX").value, yKey=$("graphY").value, fitMode=$("graphFitMode").value;
+  const numeric=["overallScore","foodScore","service","valueScore","pp"], categorical=["location","cuisine"];
+  const xNum=numeric.includes(xKey), yNum=numeric.includes(yKey), xCat=categorical.includes(xKey), yCat=categorical.includes(yKey);
+  const W=1000,H=560,m={l:70,r:30,t:30,b:70};
+  renderGraphFilterChips();applyGraphZoom();
+  if(xCat && yCat){svg.innerHTML=''; note.textContent='Choose at least one numeric factor to draw the graph.'; $("graphDetail").innerHTML='<div class="muted">Pick a numeric axis to build a scatter plot or bar chart.</div>'; return;}
+  const focused=graphFiltered(data);
+  if(xNum && yNum){
+    const allPts=data.map(e=>({e,x:Number(factorValue(e,xKey)),y:Number(factorValue(e,yKey))})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+    const focusedIds=new Set(focused.map(e=>e.id));
+    const focusPts=allPts.filter(p=>focusedIds.has(p.e.id));
+    if(!allPts.length){svg.innerHTML=''; note.textContent='No matching data for this scatter plot.'; $("graphDetail").innerHTML='<div class="muted">No restaurants have values for both selected axes.</div>';return}
+    const minX=Math.min(...allPts.map(p=>p.x)), maxX=Math.max(...allPts.map(p=>p.x)), minY=Math.min(...allPts.map(p=>p.y)), maxY=Math.max(...allPts.map(p=>p.y));
+    const sx=v=>m.l+((v-minX)/(maxX-minX||1))*(W-m.l-m.r), sy=v=>H-m.b-((v-minY)/(maxY-minY||1))*(H-m.t-m.b);
+    let out=`<rect x="0" y="0" width="${W}" height="${H}" fill="#fcfcf9"/><line x1="${m.l}" y1="${H-m.b}" x2="${W-m.r}" y2="${H-m.b}" stroke="#999"/><line x1="${m.l}" y1="${m.t}" x2="${m.l}" y2="${H-m.b}" stroke="#999"/>`;
+    for(let i=0;i<=5;i++){const v=minX+(maxX-minX)*(i/5), x=sx(v); out+=`<line x1="${x}" y1="${H-m.b}" x2="${x}" y2="${m.t}" stroke="#ece7de"/><text x="${x}" y="${H-m.b+22}" text-anchor="middle" font-size="12" fill="#666">${roundToTwoSigFigs(v)}</text>`}
+    for(let i=0;i<=5;i++){const v=minY+(maxY-minY)*(i/5), y=sy(v); out+=`<line x1="${m.l}" y1="${y}" x2="${W-m.r}" y2="${y}" stroke="#ece7de"/><text x="${m.l-10}" y="${y+4}" text-anchor="end" font-size="12" fill="#666">${roundToTwoSigFigs(v)}</text>`}
+
+    const fitSource = fitMode==="filtered" ? focusPts : allPts;
+    const reg = fitMode==="off" ? {ok:false,message:"Line of best fit disabled."} : graphRegression(fitSource);
+    if(fitMode!=="off" && reg.ok){
+      const x1=reg.minX, y1=reg.slope*x1+reg.intercept, x2=reg.maxX, y2=reg.slope*x2+reg.intercept;
+      out += `<line x1="${sx(x1)}" y1="${sy(y1)}" x2="${sx(x2)}" y2="${sy(y2)}" stroke="#0f8bd6" stroke-width="3" stroke-dasharray="${fitMode==='filtered'?'10 8':'0'}" opacity="0.9"/>`;
+    }
+
+    allPts.forEach(p=>{
+      const inFocus=focusedIds.has(p.e.id);
+      const selected=graphSelection===p.e.id;
+      const fill=selected?'#d63d2e':(inFocus?scoreColor(overallScore(p.e)||p.e.foodScore):'#b8bec8');
+      const opacity=inFocus?0.92:0.48;
+      out+=`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="${selected?8:(inFocus?6:5)}" fill="${fill}" opacity="${opacity}" data-graph-point="${p.e.id}"/>`;
+    });
+    out+=`<text x="${W/2}" y="${H-10}" text-anchor="middle" font-size="16" fill="#333">${factorLabel(xKey)}</text><text x="18" y="${H/2}" text-anchor="middle" font-size="16" fill="#333" transform="rotate(-90 18 ${H/2})">${factorLabel(yKey)}</text>`;
+    svg.innerHTML=out;
+    const subsetText = graphFiltersActive()?` Graph filters matched ${focusPts.length} of ${allPts.length} visible restaurants.`:'';
+    const fitText = fitMode==='off' ? 'Line of best fit disabled.' : regressionSummary(reg);
+    note.textContent=`Scatter plot · click any dot to inspect a restaurant.${subsetText} ${fitMode==='filtered'?'Filtered fit uses only the highlighted subset. ':'Normal fit uses all visible points. '}${fitText}`;
+    const selected=data.find(e=>e.id===graphSelection)||focusPts[0]?.e||allPts[0]?.e; if(selected){graphSelection=selected.id; renderGraphDetailRestaurant(selected)}
+    return;
+  }
+  const catKey=xCat?xKey:yKey, metricKey=xCat?yKey:xKey;
+  const groups={}; focused.forEach(e=>{const cat=factorValue(e,catKey)||'Unknown'; const val=Number(factorValue(e,metricKey)); if(!Number.isFinite(val))return; (groups[cat]??=[]).push(e)});
+  const bars=Object.entries(groups).map(([category,list])=>({category,list,count:list.length,avg:roundToTwoSigFigs(list.map(e=>Number(factorValue(e,metricKey)||0)).reduce((s,x)=>s+x,0)/list.length)})).sort((a,b)=>b.avg-a.avg).slice(0,12);
+  if(!bars.length){svg.innerHTML=''; note.textContent='No matching data for this bar chart.'; $("graphDetail").innerHTML='<div class="muted">No restaurants match the current Patterns filters for this bar chart.</div>'; return}
+  const bw=(W-m.l-m.r)/bars.length, maxV=Math.max(...bars.map(b=>b.avg));
+  let out=`<rect x="0" y="0" width="${W}" height="${H}" fill="#fcfcf9"/><line x1="${m.l}" y1="${H-m.b}" x2="${W-m.r}" y2="${H-m.b}" stroke="#999"/><line x1="${m.l}" y1="${m.t}" x2="${m.l}" y2="${H-m.b}" stroke="#999"/>`;
+  for(let i=0;i<=5;i++){const v=maxV*(i/5), y=H-m.b-(v/(maxV||1))*(H-m.t-m.b); out+=`<line x1="${m.l}" y1="${y}" x2="${W-m.r}" y2="${y}" stroke="#ece7de"/><text x="${m.l-10}" y="${y+4}" text-anchor="end" font-size="12" fill="#666">${roundToTwoSigFigs(v)}</text>`}
+  bars.forEach((b,i)=>{const x=m.l+i*bw+10, w=Math.max(28,bw-20), h=(b.avg/(maxV||1))*(H-m.t-m.b), y=H-m.b-h, selected=graphSelection===b.category; out+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${selected?'#d63d2e':'#3c4a60'}" opacity="0.88" data-graph-bar="${esc(b.category)}"></rect><text x="${x+w/2}" y="${y-8}" text-anchor="middle" font-size="11" fill="#444">${b.avg}</text><text x="${x+w/2}" y="${H-m.b+18}" text-anchor="middle" font-size="11" fill="#555">${esc(b.category).slice(0,12)}</text><text x="${x+w/2}" y="${H-m.b+33}" text-anchor="middle" font-size="10" fill="#777">n=${b.count}</text>`});
+  out+=`<text x="${W/2}" y="${H-10}" text-anchor="middle" font-size="16" fill="#333">${factorLabel(catKey)}</text><text x="18" y="${H/2}" text-anchor="middle" font-size="16" fill="#333" transform="rotate(-90 18 ${H/2})">Average ${factorLabel(metricKey)}</text>`;
+  svg.innerHTML=out; note.textContent=`Bar chart · current Patterns filters matched ${focused.length} restaurant${focused.length===1?'':'s'}. Sample size for each category appears below the label.`;
+  const selected=bars.find(b=>b.category===graphSelection)||bars[0]; if(selected){graphSelection=selected.category; renderGraphDetailGroup(selected.category,selected.list,metricKey)}
+}
+function openGraphRestaurant(id){graphSelection=id; renderGraph(filtered())}
+function openGraphGroup(category){graphSelection=category; renderGraph(filtered())}
+
+function normalizeDishCategoryNames(values){
+  const result=[],seen=new Set();
+  const source=Array.isArray(values)?values:String(values||"").split(/[,;\n]+/);
+  for(const raw of source){
+    const category=String(raw||"").trim().replace(/\s+/g," ").slice(0,60);
+    const key=category.toLocaleLowerCase();
+    if(category&&!seen.has(key)){seen.add(key);result.push(category)}
+  }
+  return result;
+}
+function explicitDishCategories(item){
+  if(Array.isArray(item?.categories)&&item.categories.length)return normalizeDishCategoryNames(item.categories);
+  return normalizeDishCategoryNames(item?.category||"");
+}
+function dishCategoriesForItem(item){
+  const explicit=explicitDishCategories(item);
+  return explicit.length?explicit.filter(c=>!(prefs.hiddenDishCategories||[]).some(h=>h.toLowerCase()===c.toLowerCase())):((prefs.hiddenDishCategories||[]).some(h=>h.toLowerCase()===dishCategory(item).toLowerCase())?["Uncategorised"]:[dishCategory(item)]);
+}
+function dishCategoryCatalog(){
+  return normalizeDishCategoryNames([...(prefs.dishCategories||[]),...allDishes().flatMap(d=>d.categories),"Burger","Pizza","Kebab","Steak","Sushi","Curry","Pasta","Dessert","Seafood","Breakfast","Sandwich","Noodles","Salad","Other dishes","Uncategorised"]).filter(c=>!(prefs.hiddenDishCategories||[]).some(h=>h.toLowerCase()===c.toLowerCase())).sort((a,b)=>a.localeCompare(b));
+}
+function addCustomDishCategory(raw){
+  const names=normalizeDishCategoryNames(raw);
+  if(!names.length)return null;
+  const name=names[0],existing=dishCategoryCatalog().find(x=>x.toLowerCase()===name.toLowerCase());
+  const finalName=existing||name;
+  prefs.hiddenDishCategories=(prefs.hiddenDishCategories||[]).filter(h=>h.toLowerCase()!==finalName.toLowerCase());prefs.dishCategories=normalizeDishCategoryNames([...(prefs.dishCategories||[]),finalName]);
+  savePrefs();renderDishCategoryManager();return finalName;
+}
+function renderDishCategoryManager(){
+  const catalogue=dishCategoryCatalog();
+  const counts=new Map();
+  for(const d of allDishes())for(const c of d.categories)counts.set(c.toLowerCase(),(counts.get(c.toLowerCase())||0)+1);
+  $("dishCategoryCatalog").innerHTML=catalogue.map(c=>`<span class="category-catalog-chip"><button type="button" class="category-open" data-open-dish-book="${esc(c)}">${esc(c)} <small>${counts.get(c.toLowerCase())||0}</small></button><button type="button" class="category-delete" title="Delete category" aria-label="Delete ${esc(c)} category" data-delete-dish-category="${esc(c)}">×</button></span>`).join("");
+  const suggestions=$("dishCategorySuggestions");
+  if(suggestions)suggestions.innerHTML=catalogue.map(c=>`<option value="${esc(c)}"></option>`).join("");
+}
+function showDishCategoryChoices(selected=[]){
+  const selection=new Set(selected.map(x=>x.toLowerCase()));
+  $("dishCategoryChoices").innerHTML=dishCategoryCatalog().map(c=>`<label class="category-choice"><input type="checkbox" value="${esc(c)}" ${selection.has(c.toLowerCase())?'checked':''}><span>${esc(c)}</span></label>`).join("");
+}
+function openDishCategoryDialog(restaurantId,index){
+  const e=entries.find(x=>x.id===restaurantId),item=e?.items?.[index];if(!e||!item)return;
+  currentDishCategoryEdit={restaurantId,index};
+  $("dishCategoryDialogSubtitle").textContent=`${item.name} · ${e.restaurant}`;
+  $("dishCategoryNewInDialog").value="";
+  showDishCategoryChoices(dishCategoriesForItem(item));
+  $("dishCategoryDialog").showModal();
+}
+function addCategoryInDialog(){
+  const selected=[...$("dishCategoryChoices").querySelectorAll('input:checked')].map(x=>x.value);
+  const cat=addCustomDishCategory($("dishCategoryNewInDialog").value);
+  if(!cat){$("dishCategoryNewInDialog").focus();return}
+  $("dishCategoryNewInDialog").value="";
+  showDishCategoryChoices([...selected,cat]);
+}
+async function saveDishCategoryChanges(){
+  const context=currentDishCategoryEdit;if(!context)return;
+  const e=entries.find(x=>x.id===context.restaurantId);if(!e||!e.items[context.index])return;
+  const names=normalizeDishCategoryNames([...$("dishCategoryChoices").querySelectorAll('input:checked')].map(x=>x.value));
+  if(!names.length)names.push("Uncategorised");
+  e.items[context.index]={...e.items[context.index],categories:names,category:names[0]};
+  e.updatedAt=new Date().toISOString();
+  prefs.dishCategories=normalizeDishCategoryNames([...(prefs.dishCategories||[]),...names]);
+  savePrefs();await putStore(RESTAURANTS,e);
+  $("dishCategoryDialog").close();currentDishCategoryEdit=null;
+  render();
+}
+function addItemRow(item={name:"",rating:8,category:""}){
+  const cats=explicitDishCategories(item);
+  const r=document.createElement("div");r.className="item-edit";r.dataset.photo=item.photo||"";
+  r.innerHTML=`<input class="dish-name" placeholder="Dish / item" aria-label="Dish name" value="${esc(item.name||"")}"><input class="dish-categories-input" placeholder="Categories: Dessert, Street food" aria-label="Dish categories, separated by commas" value="${esc(cats.join(', '))}"><input class="dish-rating" type="number" min="0" max="10" step="0.1" value="${Number(item.rating??8)}" aria-label="Dish rating"><div class="dish-editor-photo" title="Assign photo to dish later in Dish Universe"><span>${r.dataset.photo?'Photo ✓':'Paste photo later in Dish Universe'}</span></div><button type="button" class="remove-item" aria-label="Remove dish">−</button>`;
+  r.querySelector(".remove-item").onclick=()=>r.remove();$("itemsEditor").appendChild(r);
+}
+
+function setFoodScore(v){v=Math.max(0,Math.min(100,Number(v)||0));$("foodScore").value=v;$("foodScoreNumber").value=v;$("foodScoreNumber").style.background=scoreColor(v);$("foodScoreNumber").style.color="#fff"}
+function setValueScore(v){v=Math.max(0,Math.min(100,Number(v)||0));$("valueScore").value=v;$("valueScoreNumber").value=v;$("valueScoreNumber").style.background=scoreColor(v);$("valueScoreNumber").style.color="#fff"}
+function setPP(v){v=Math.max(0,Math.min(75,Number(v)||0));$("pp").value=v;$("ppNumber").value=v}
+function photoPreview(){$("photoPreview").innerHTML="";workingPhotos.forEach((p,i)=>{const d=document.createElement("div");d.className="photo-chip";d.innerHTML=`<img src="${esc(p)}"><button type="button">×</button>`;d.querySelector("button").onclick=()=>{workingPhotos.splice(i,1);photoPreview()};$("photoPreview").appendChild(d)})}
+function renderEditorVisits(){
+  const root=$("editorVisitRows");
+  $("editorVisitTotal").textContent=workingVisits.length>10?"10+":String(workingVisits.length);
+  root.innerHTML=workingVisits.length?workingVisits.map((v,i)=>`<div class="visit-editor-row" data-visit-id="${esc(v.id)}">
+    <div class="visit-row-index"><b>${String(i+1).padStart(2,"0")}</b><div><b>Visit ${i+1}</b><small>${v.date?"Dated memory":"Date unknown"}</small></div></div>
+    <label>Date · optional<input type="date" class="visit-date-field" value="${esc(v.date||"")}" aria-label="Date of visit ${i+1} (optional)"></label>
+    <label>Food value (£)<input class="visit-food-field" inputmode="decimal" type="number" min="0" step="0.01" value="${v.foodValue===null?'':v.foodValue}" aria-label="Food value for visit ${i+1}"></label>
+    <label>You paid (£)<input class="visit-spend-field" inputmode="decimal" type="number" min="0" step="0.01" value="${v.spend===null?'':v.spend}" ${v.paidFor?'disabled':''} aria-label="Personally paid for visit ${i+1}"></label>
+    <label class="editor-visit-treated"><input class="visit-treated-field" type="checkbox" ${v.paidFor?'checked':''} aria-label="Someone paid for visit ${i+1}"> Treated</label>
+    <button type="button" data-remove-editor-visit="${esc(v.id)}" aria-label="Remove visit ${i+1}">Remove</button>
+  </div>`).join(""):'<div class="visit-empty-message">No visits added. Click “Add another visit” if you remember going.</div>';
+}
+function prepareWorkingVisits(e){
+  workingVisits=e?restaurantVisits(e.id).map(v=>({...v})):[];
+  if(e){
+    const remembered=e.dateVisited||"";
+    if(remembered&&!workingVisits.some(v=>v.date))workingVisits.push(normaliseVisit({id:uid(),restaurantId:e.id,date:remembered,spend:null,note:""}));
+    const count=Math.max(Number(e.manualVisitCount||0),workingVisits.length);
+    for(let i=workingVisits.length;i<count;i++)workingVisits.push(normaliseVisit({id:uid(),restaurantId:e.id,date:"",spend:null,note:""}));
+  }else workingVisits=[normaliseVisit({id:uid(),date:"",spend:null,note:""})];
+  renderEditorVisits();
+}
+function resetPlaceSelection(){
+  selectedPlace=null;$("placeSelectedNote").style.display="none";
+}
+// Manual restaurant entry: no external place-search requests.
+function similarName(a,b){
+  const normalize=s=>String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const x=normalize(a),y=normalize(b);if(!x||!y)return false;if(x===y)return true;
+  if(x.length<6||y.length<6)return false;
+  const rows=[...Array(y.length+1).keys()];
+  for(let i=1;i<=x.length;i++){let prev=rows[0];rows[0]=i;for(let j=1;j<=y.length;j++){const keep=rows[j];rows[j]=Math.min(rows[j]+1,rows[j-1]+1,prev+(x[i-1]===y[j-1]?0:1));prev=keep}}
+  return rows[y.length]<=Math.max(1,Math.floor(Math.max(x.length,y.length)*.16));
+}
+let editorValueRated=true,editorPriceRated=true;
+function updateEditorRatingHints(){
+ if($("editorValueStatus"))$("editorValueStatus").textContent=editorValueRated?"Value included when service is rated.":"Not rated yet — adjust the value slider to include a rating.";
+ if($("editorPriceStatus"))$("editorPriceStatus").textContent=editorPriceRated?"Listed price estimate recorded.":"Price not recorded — adjust this slider only if known.";
+}
+function resetEditor(){
+  editorPasteTarget="restaurant";editingId=null;editingDraftId=null;editorValueRated=true;editorPriceRated=true;$("editorTitle").textContent="Add restaurant";$("editorForm").reset();
+  setFoodScore(75);setValueScore(70);$("service").value="Average";setPP(25);
+  $("international").checked=false;$("itemsEditor").innerHTML="";addItemRow();
+  workingPhotos=[];workingLocationImage="";locationImageEdited=false;setLocationImagePreview("");
+  $("placeSearchResults").innerHTML="";$("googleMapsUrl").value="";resetPlaceSelection();prepareWorkingVisits(null);
+  document.querySelectorAll(".vibe-check input").forEach(x=>x.checked=false);
+  $("deleteBtn").style.visibility="hidden";$("pasteZone").textContent="Click here, then press Ctrl+V / Cmd+V to paste a copied image";updateEditorRatingHints();photoPreview();
+}
+function edit(id){
+  editorPasteTarget="restaurant";const e=entries.find(x=>x.id===id);if(!e)return;
+  editingId=id;editingDraftId=null;$("editorTitle").textContent="Edit restaurant";
+  $("restaurant").value=e.restaurant;$("cuisine").value=e.cuisine;setFoodScore(e.foodScore);
+  setValueScore(e.valueScore===null?70:e.valueScore);$("service").value=e.service;setPP(e.pp);
+  editorValueRated=e.valueScore!==null;editorPriceRated=e.pp!==null;updateEditorRatingHints();
+  $("international").checked=!!e.international;$("location").value=e.location;$("notes").value=e.notes;
+  $("itemsEditor").innerHTML="";e.items.forEach(addItemRow);if(!e.items.length)addItemRow();
+  workingPhotos=[...e.photos];locationImageEdited=false;workingLocationImage=getLocationImage(e.location);setLocationImagePreview(workingLocationImage);
+  $("placeSearchResults").innerHTML="";resetPlaceSelection();prepareWorkingVisits(e);
+  document.querySelectorAll(".vibe-check input").forEach(x=>x.checked=e.vibes.includes(x.value));
+  $("deleteBtn").style.visibility="visible";$("pasteZone").textContent="Click here, then press Ctrl+V / Cmd+V to paste another image";
+  photoPreview();setEditorStep(1);$("editor").showModal();
+}
+function imageToData(file,max=1000,q=.76){return new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height,s=Math.min(1,max/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);resolve(c.toDataURL("image/jpeg",q))};img.onerror=reject;img.src=fr.result};fr.onerror=reject;fr.readAsDataURL(file)})}
+async function addImageFiles(files){
+  let added=0;
+  for(const f of [...files]){
+    if(f && f.type && f.type.startsWith("image/")){
+      workingPhotos.push(await imageToData(f));
+      added++;
+    }
+  }
+  if(added){
+    photoPreview();
+    const zone=$("pasteZone");
+    zone.textContent=added===1?"Image pasted — paste another or upload more":`${added} images added — paste or upload more`;
+    zone.classList.add("paste-ok");
+    setTimeout(()=>zone.classList.remove("paste-ok"),900);
+  }
+  return added;
+}
+async function addLocationImageFile(file){
+  if(!file)return; const src=await imageToData(file,1200,.78); setLocationImagePreview(src,true);
+}
+
+async function handleImagePaste(ev){
+  if(!$('editor').open)return;
+  const imageItems=[...(ev.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/'));
+  if(!imageItems.length)return;
+  const target=ev.target?.closest?.('#locationPasteZone,#pasteZone');
+  const destination=target?.id==='locationPasteZone'?'location':target?.id==='pasteZone'?'restaurant':editorPasteTarget;
+  ev.preventDefault();ev.stopPropagation();
+  try{
+    if(destination==='location'){
+      await addLocationImageFile(imageItems[0].getAsFile());$('locationPasteZone').textContent='Location image pasted ✓';
+    }else{
+      await addImageFiles(imageItems.map(i=>i.getAsFile()).filter(Boolean));
+    }
+  }catch(err){alert('Could not paste image: '+err.message)}
+}
+async function saveEntry(ev){
+  ev.preventDefault();const old=editingId?entries.find(e=>e.id===editingId):null;
+  const name=$("restaurant").value.trim(),location=$("location").value.trim();
+  const possibleDuplicate=entries.find(x=>x.id!==editingId&&similarName(x.restaurant,name)&&location&&x.location&&x.location.toLowerCase().trim()===location.toLowerCase().trim());
+  if(possibleDuplicate&&!confirm(`“${possibleDuplicate.restaurant}” at this location looks like the same restaurant already in your collection. Save a separate entry anyway?`))return;
+  const items=[...document.querySelectorAll(".item-edit")].map(r=>({name:r.querySelector(".dish-name").value.trim(),rating:Math.max(0,Math.min(10,Number(r.querySelector(".dish-rating").value)||0)),categories:normalizeDishCategoryNames(r.querySelector(".dish-categories-input")?.value||""),category:normalizeDishCategoryNames(r.querySelector(".dish-categories-input")?.value||"")[0]||"",photo:r.dataset.photo||""})).filter(i=>i.name);
+  prefs.dishCategories=normalizeDishCategoryNames([...(prefs.dishCategories||[]),...items.flatMap(i=>i.categories)]);savePrefs();
+  const vibes=[...document.querySelectorAll(".vibe-check input:checked")].map(x=>x.value);
+  if(workingVisits.some(v=>v.foodValue===undefined||v.spend===undefined)){notify('Check visit amounts: only non-negative numbers are allowed.','error');return}
+  const rememberedDates=workingVisits.map(v=>v.date).filter(Boolean).sort();
+  const e=normalise({id:editingId||uid(),restaurant:name,cuisine:$("cuisine").value.trim(),foodScore:Number($("foodScore").value),valueScore:editorValueRated?Number($("valueScore").value):null,valueScale:100,items,battleHistory:old?.battleHistory||[],service:$("service").value,vibes,pp:editorPriceRated?Number($("pp").value):null,dateVisited:rememberedDates[0]||"",manualVisitCount:workingVisits.length,international:$("international").checked,location,notes:$("notes").value.trim(),photos:workingPhotos,
+    placeSource:old?.placeSource||"",osmType:old?.osmType||"",osmId:old?.osmId||"",placeAddress:old?.placeAddress||"",googlePlaceId:old?.googlePlaceId||"",googleMapsUrl:old?.googleMapsUrl||"",latitude:old?.latitude??null,longitude:old?.longitude??null,
+    createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()});
+  try{
+    const prev=restaurantVisits(e.id),nextIds=new Set(workingVisits.map(v=>v.id));
+    const next=workingVisits.map(v=>normaliseVisit({...v,restaurantId:e.id,updatedAt:new Date().toISOString()}));
+    const recovery=editingId?buildRecoverySnapshot('Before editing a restaurant'):null;
+    const ops=[...(recovery?[[SNAPSHOTS,'put',recovery]]:[]),[RESTAURANTS,'put',e],...prev.filter(v=>!nextIds.has(v.id)).map(v=>[VISITS,'delete',v.id]),...next.map(v=>[VISITS,'put',v])];
+    let rec=null;
+    if(e.location&&locationImageEdited){rec=normaliseLocationRecord({id:e.location,image:workingLocationImage,updatedAt:new Date().toISOString()});ops.push([LOCATIONS,'put',rec])}
+    await mutateStores(ops);
+    entries=entries.filter(x=>x.id!==e.id).concat(e);
+    visits=visits.filter(v=>v.restaurantId!==e.id).concat(next);
+    if(rec)locationMedia=locationMedia.filter(x=>x.id!==rec.id).concat(rec);
+    if(editingDraftId){if(writeDrafts(readDrafts().filter(d=>d.id!==editingDraftId)))editingDraftId=null}
+    render();$("editor").close();notify('Restaurant saved to your collection.');
+  }catch(err){console.error(err);alert("Couldn't save the restaurant or visits: "+err.message)}
+}
+async function deleteEntry(){
+ if(!editingId||!confirm('Delete this restaurant memory?'))return;
+ const id=editingId,updatedLists=lists.map(l=>l.restaurantIds.includes(id)?{...l,restaurantIds:l.restaurantIds.filter(rid=>rid!==id),updatedAt:new Date().toISOString()}:l);
+ const snap=buildRecoverySnapshot('Before deleting a restaurant');const ops=[...(snap?[[SNAPSHOTS,'put',snap]]:[]),[RESTAURANTS,'delete',id],...visits.filter(v=>v.restaurantId===id).map(v=>[VISITS,'delete',v.id]),...updatedLists.filter(l=>lists.find(x=>x.id===l.id)!==l).map(l=>[LISTS,'put',l])];
+ try{await mutateStores(ops);entries=entries.filter(e=>e.id!==id);visits=visits.filter(v=>v.restaurantId!==id);lists=updatedLists;$('editor').close();render();notify('Restaurant and linked visits deleted.')}catch(error){notify('Delete failed; collection was not changed.','error');console.error(error)}
+}
+function syncControls(){const f=prefs.filters,g=prefs.graph.filters;$("filterLocation").value=f.location||"";$("filterCuisine").value=f.cuisine||"";$("filterVibe").value=f.vibe||"";$("filterRegion").value=f.region||"";$("filterService").value=f.service||"";$("filterMinScore").value=f.minScore??"";$("filterMinValue").value=f.minValue??"";$("filterMaxSpend").value=f.maxSpend??"";$("sortProperty").value=prefs.sortProperty||"grandRank";$("sortDirection").value=prefs.sortDirection||"asc";$("graphFitMode").value=prefs.graph.fitMode||"off";$("graphFilterLocation").value=g.location||"";$("graphFilterCuisine").value=g.cuisine||"";$("graphFilterRegion").value=g.region||"";$("graphFilterMinFood").value=g.minFood??"";$("graphFilterMinOverall").value=g.minOverall??""}
+
+function openNewList(){editingListId=null;$("listDialogTitle").textContent="Create list";$("listName").value="";$("listDescription").value="";$("deleteListBtn").style.visibility="hidden";$("listDialog").showModal()}
+function openEditList(id){const l=lists.find(x=>x.id===id);if(!l)return;editingListId=id;$("listDialogTitle").textContent="Edit list";$("listName").value=l.name;$("listDescription").value=l.description;$("deleteListBtn").style.visibility="visible";$("listDialog").showModal()}
+async function saveList(){
+  const name=$("listName").value.trim();if(!name){alert("Give the list a name.");return}
+  const old=editingListId?lists.find(l=>l.id===editingListId):null;
+  const l=normaliseList({id:editingListId||uid(),name,description:$("listDescription").value.trim(),restaurantIds:old?.restaurantIds||[],createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()});
+  await putStore(LISTS,l);lists=lists.filter(x=>x.id!==l.id).concat(l);prefs.activeListId=l.id;savePrefs();$("listDialog").close();render()
+}
+async function deleteList(){if(!editingListId||!confirm("Delete this custom list?"))return;await delStore(LISTS,editingListId);lists=lists.filter(l=>l.id!==editingListId);if(prefs.activeListId===editingListId)prefs.activeListId=lists[0]?.id||null;savePrefs();$("listDialog").close();render()}
+async function addSelectedRestaurantToList(listId){const sel=$("addRestaurantSelect");if(!sel?.value)return;const l=lists.find(x=>x.id===listId);if(!l||l.restaurantIds.includes(sel.value))return;l.restaurantIds.push(sel.value);l.updatedAt=new Date().toISOString();await putStore(LISTS,l);render()}
+async function moveListItem(listId,index,dir){const l=lists.find(x=>x.id===listId);if(!l)return;const ni=index+dir;if(ni<0||ni>=l.restaurantIds.length)return;[l.restaurantIds[index],l.restaurantIds[ni]]=[l.restaurantIds[ni],l.restaurantIds[index]];l.updatedAt=new Date().toISOString();await putStore(LISTS,l);render()}
+async function removeFromList(listId,rid){const l=lists.find(x=>x.id===listId);if(!l)return;l.restaurantIds=l.restaurantIds.filter(id=>id!==rid);l.updatedAt=new Date().toISOString();await putStore(LISTS,l);render()}
+
+const BACKUP_MARK_KEY="recolleat-last-export-prepared-v42";
+const BACKUP_FINGERPRINT_KEY="recolleat-backup-fingerprint-v47";
+function journalFingerprint(){
+  // A non-cryptographic change detector, not a proof of backup integrity.
+  const rows=[...entries.map(e=>['r',e.id,e.updatedAt,e.foodScore,e.valueScore,e.service,e.items?.length,e.photos?.length,e.notes]),
+    ...visits.map(v=>['v',v.id,v.updatedAt,v.spend,v.foodValue,v.paidFor,v.dishes?.length,v.photos?.length,v.note]),
+    ...lists.map(l=>['l',l.id,l.updatedAt,l.restaurantIds?.length]),
+    ...locationMedia.map(r=>['location',r.id,r.updatedAt,r.image?.length]),
+    ...readDrafts().map(d=>['d',d.id,d.updatedAt])].sort((a,b)=>String(a[1]).localeCompare(String(b[1])));
+  const text=JSON.stringify({rows,profile,earnedRewardLevels,categories:prefs.dishCategories||[],hiddenCategories:prefs.hiddenDishCategories||[]});let hash=2166136261;
+  for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,16777619)}
+  return String(hash>>>0)+':'+rows.length;
+}
+function renderBackupStatus(){
+  const el=$('v42BackupStatus');if(!el)return;
+  let last=null;try{last=localStorage.getItem(BACKUP_MARK_KEY)}catch{}
+  const stamp=last?new Date(last):null;
+  if(!stamp||Number.isNaN(stamp.getTime())){el.textContent='No backup prepared on this device. Export and keep a copy elsewhere.';return}
+  let previous='';try{previous=localStorage.getItem(BACKUP_FINGERPRINT_KEY)||''}catch{}
+  const changed=previous&&previous!==journalFingerprint();
+  const age=Math.floor((Date.now()-stamp.getTime())/86400000);
+  const when=stamp.toLocaleDateString('en-GB');
+  el.textContent=changed?`Your journal changed since the backup prepared on ${when}. Export a fresh copy.`:
+    age>=30?`Your last backup was prepared ${age} days ago. Export a fresh copy.`:
+    `Last backup prepared: ${when}. ${previous?'No record changes detected.':'Export again to enable change checking.'} Keep a copy outside this device.`;
+}
+function assertMediaAvailableForBackup(records){
+  const check=source=>{
+    if(typeof source==='string'&&source.startsWith('media:')&&!mediaById.has(source.slice(6)))
+      throw new Error('A stored photograph could not be found. Backup cancelled to avoid losing an image.');
+  };
+  for(const record of records){
+    for(const source of record.photos||[])check(source);
+    for(const dish of record.items||[])check(dish?.photo);
+    for(const dish of record.dishes||[])check(dish?.photo);
+    check(record.image);check(record.photo);
+  }
+}
+async function exportBackup(){
+  try{
+    if(!db)throw new Error('Local database is unavailable. Export cancelled to prevent an empty or incomplete backup.');
+    const [savedEntries,savedLists,savedVisits,savedLocations]=await Promise.all([allStore(RESTAURANTS),allStore(LISTS),allStore(VISITS),allStore(LOCATIONS)]);
+    assertMediaAvailableForBackup([...savedEntries,...savedVisits,...savedLocations]);
+    const payload={app:'Recolleat Local',version:16,exportedAt:new Date().toISOString(),entries:savedEntries.map(hydrateMediaRecord),lists:savedLists,visits:savedVisits.map(hydrateMediaRecord),locations:savedLocations.map(hydrateMediaRecord),dishCategories:prefs.dishCategories,hiddenDishCategories:prefs.hiddenDishCategories,profile,drafts:readDrafts(),earnedThemes:earnedRewardLevels};
+    // Check that the actual serialised file can be parsed and has matching record counts.
+    const data=JSON.stringify(payload,null,2),verified=validateBackup(JSON.parse(data));
+    if(verified.entries.length!==savedEntries.length||verified.visits.length!==savedVisits.length||verified.drafts.length!==payload.drafts.length)throw new Error('Backup verification failed. Nothing was downloaded.');
+    const blob=new Blob([data],{type:'application/json'});
+    const url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url;link.download=`recolleat-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);
+    try{localStorage.setItem(BACKUP_MARK_KEY,new Date().toISOString());localStorage.setItem(BACKUP_FINGERPRINT_KEY,journalFingerprint())}catch{}
+    renderBackupStatus();renderV44Pulse();notify('Backup prepared from saved records. Verify the file in Downloads and keep a separate copy.');
+  }catch(error){notify('Backup was not prepared: '+error.message,'error');console.error(error)}
+}
+// Validate a backup *before* presenting destructive actions or touching any stored records.
+// Legacy array-only Palate backups continue to work.
+function validateBackup(raw){
+  if(!raw||typeof raw!=='object')throw new Error('Expected a JSON object or legacy restaurant array.');
+  const legacy=Array.isArray(raw),source=legacy?{entries:raw}:raw;
+  if(!legacy&&source.app&&typeof source.app==='string'&&!/recolleat|palate/i.test(source.app))throw new Error('This file identifies another application.');
+  const collections=['entries','lists','visits','locations','drafts','dishCategories','hiddenDishCategories','earnedThemes'];
+  for(const name of collections){if(source[name]!==undefined&&!Array.isArray(source[name]))throw new Error('Invalid '+name+' collection in backup.');}
+  if(!Array.isArray(source.entries))throw new Error('The backup has no restaurant collection.');
+  const limits={entries:15000,lists:5000,visits:120000,locations:15000,drafts:250,dishCategories:2000,hiddenDishCategories:2000,earnedThemes:4};
+  for(const name of collections){if((source[name]?.length||0)>limits[name])throw new Error('Unusually large '+name+' collection. Import cancelled.');}
+  for(const [name,field] of [['entries','restaurant'],['lists','name'],['drafts','name']]){
+    const seen=new Set();for(const record of source[name]||[]){
+      if(!record||typeof record!=='object'||Array.isArray(record)||typeof record[field]!=='string'||!record[field].trim())throw new Error('Invalid '+name+' record: missing '+field+'.');
+      if(record.id!==undefined&&(typeof record.id!=='string'||!record.id.trim()))throw new Error('Invalid record identifier in '+name+'.');
+      if(record.id){if(seen.has(record.id))throw new Error('Duplicate record identifier in '+name+'.');seen.add(record.id)}
+    }
+  }
+  for(const name of ['visits','locations'])for(const record of source[name]||[]){if(!record||typeof record!=='object'||Array.isArray(record))throw new Error('Invalid '+name+' record.');}
+  // V42 backups have only personal spend; V43 adds optional foodValue and paidFor.
+  // Reject corrupt monetary values before starting the all-or-nothing database transaction.
+  for(const record of source.visits||[]){
+    for(const field of ['spend','foodValue']){
+      const value=record[field];
+      if(value!==undefined&&value!==null&&value!==''&&(!Number.isFinite(Number(value))||Number(value)<0||Number(value)>10000000))throw new Error('Invalid '+field+' in a visit record.');
+    }
+    if(record.paidFor!==undefined&&typeof record.paidFor!=='boolean')throw new Error('Invalid paidFor flag in a visit record.');
+    if(record.foodRating!==undefined&&record.foodRating!==null&&(!Number.isFinite(Number(record.foodRating))||Number(record.foodRating)<0||Number(record.foodRating)>100))throw new Error('Invalid food rating in a visit.');
+    if(record.dishes!==undefined&&(!Array.isArray(record.dishes)||record.dishes.some(i=>!i||typeof i.name!=='string'||!i.name.trim()||i.photo?.startsWith?.('media:'))))throw new Error('Invalid visit dishes.');
+    if(record.photos!==undefined&&(!Array.isArray(record.photos)||record.photos.some(x=>typeof x==='string'&&x.startsWith('media:'))))throw new Error('Invalid visit photographs.');
+  }
+  for(const e of source.entries){
+    for(const field of ['foodScore','valueScore','pp']){
+      if(e[field]!==null&&e[field]!==undefined&&e[field]!==''&&!Number.isFinite(Number(e[field])))throw new Error('Invalid '+field+' in a restaurant record.');
+    }
+    if(e.items!==undefined&&(!Array.isArray(e.items)||e.items.some(i=>i?.photo?.startsWith?.('media:'))))throw new Error('Invalid dishes collection in restaurant '+e.restaurant);
+    if(e.photos!==undefined&&!Array.isArray(e.photos))throw new Error('Invalid photographs collection in restaurant '+e.restaurant);
+    if((e.photos||[]).some(x=>typeof x==='string'&&x.startsWith('media:')))throw new Error('Backup contains unresolved photograph references. Export from the app again.');
+  }
+  if(source.profile!==undefined&&source.profile!==null&&(typeof source.profile!=='object'||Array.isArray(source.profile)))throw new Error('Invalid profile in backup.');
+  if(source.earnedThemes&&source.earnedThemes.some(n=>![10,20,30,40].includes(n)))throw new Error('Invalid earned theme levels in backup.');
+  return {entries:source.entries,lists:source.lists||[],visits:source.visits||[],locations:source.locations||[],drafts:source.drafts||[],dishCategories:source.dishCategories||[],hiddenDishCategories:source.hiddenDishCategories||[],profile:source.profile||null,earnedThemes:source.earnedThemes||[],legacy:legacy||source.version===undefined};
+}
+function normalizeImportedDraft(d){
+  const id=d.id||uid();return {id,name:d.name.trim().slice(0,120),cuisine:String(d.cuisine||'').slice(0,80),location:String(d.location||'').slice(0,120),foodScore:d.foodScore===null||d.foodScore===undefined?null:Number(d.foodScore),valueScore:d.valueScore===undefined||d.valueScore===null?null:Number(d.valueScore),service:String(d.service||'Average'),pp:d.pp===undefined||d.pp===null?null:Number(d.pp),international:!!d.international,vibes:Array.isArray(d.vibes)?d.vibes:[],items:Array.isArray(d.items)?d.items:[],visits:Array.isArray(d.visits)?d.visits:[],photos:Array.isArray(d.photos)?d.photos:[],locationPhoto:String(d.locationPhoto||''),notes:String(d.notes||'').slice(0,10000),updatedAt:d.updatedAt||new Date().toISOString()};
+}
+function newerOrSame(incoming,previous){
+ const a=Date.parse(incoming.updatedAt||''),b=Date.parse(previous.updatedAt||'');
+ return !Number.isFinite(a)||!Number.isFinite(b)||a>=b;
+}
+function mergeRecords(existing,incoming,replace){
+ const map=new Map((replace?[]:existing).map(x=>[x.id,x]));
+ for(const record of incoming){const old=map.get(record.id);if(!old||newerOrSame(record,old))map.set(record.id,record)}
+ return [...map.values()];
+}
+async function importData(mode){
+ if(!pendingImport||!['merge','replace'].includes(mode))return;
+ if(mode==='replace'&&(entries.length||visits.length||readDrafts().length)&&!$('recoReplaceConsent').checked){notify('Download your current backup and confirm before replacing.','error');return}
+ if(mode==='replace'&&!confirm('Replace all local Recolleat data with this backup? This cannot be undone without a saved backup.'))return;
+ const btns=[$('mergeImport'),$('replaceImport')];btns.forEach(b=>b.disabled=true);
+ try{
+  if(!db)throw new Error('Journal storage is not available; no import was attempted.');
+  // All validation and normalisation complete before any destructive write.
+  const data=validateBackup(pendingImport);
+  const staged={
+    entries:mergeRecords(entries,data.entries.map(normalise),mode==='replace'),
+    lists:mergeRecords(lists,data.lists.map(normaliseList),mode==='replace'),
+    visits:mergeRecords(visits,data.visits.map(normaliseVisit),mode==='replace'),
+    locations:mergeRecords(locationMedia,data.locations.map(normaliseLocationRecord),mode==='replace')
+  };
+  const dishCategories=normalizeDishCategoryNames(mode==='replace'?data.dishCategories:[...(prefs.dishCategories||[]),...data.dishCategories]);
+  const hiddenDishCategories=normalizeDishCategoryNames(mode==='replace'?data.hiddenDishCategories:[...(prefs.hiddenDishCategories||[]),...data.hiddenDishCategories]);
+  const nextPrefs={...prefs,dishCategories,hiddenDishCategories};
+  const incomingProfile={username:typeof data.profile?.username==='string'?data.profile.username.slice(0,30):'',photo:typeof data.profile?.photo==='string'&&data.profile.photo.startsWith('data:image/')?data.profile.photo:''};
+  const nextProfile=mode==='replace'?incomingProfile:(profile.username||profile.photo?profile:incomingProfile);
+  const existingDrafts=mode==='replace'?[]:readDrafts();
+  const draftMap=new Map(existingDrafts.map(d=>[d.id,d]));
+  for(const d of data.drafts){const normalized=normalizeImportedDraft(d);const old=draftMap.get(normalized.id);if(!old||newerOrSame(normalized,old))draftMap.set(normalized.id,normalized)}
+  if(draftMap.size>250)throw new Error('Too many drafts to restore safely.');
+  const restoredLevels=[...new Set([...(mode==='replace'?[]:earnedRewardLevels),...data.earnedThemes,...[10,20,30,40].filter(n=>staged.entries.length>=n)])].sort((a,b)=>a-b);
+  const storageUpdates=[[PREF_KEY,JSON.stringify(nextPrefs)],[PROFILE_KEY,JSON.stringify(nextProfile)],[DRAFT_KEY,JSON.stringify([...draftMap.values()])],[REWARDS_KEY,JSON.stringify(restoredLevels)]];
+  const prior=new Map();const applied=[];
+  try{
+    // Preflight all localStorage fields before touching the database. If the
+    // database transaction aborts, restore those fields to their old values.
+    for(const [key,value] of storageUpdates){prior.set(key,localStorage.getItem(key));localStorage.setItem(key,value);applied.push(key)}
+    const snap=buildRecoverySnapshot('Before '+mode+' import');const ops=[];
+    if(snap)ops.push([SNAPSHOTS,'put',snap]);
+    if(mode==='replace')ops.push([MEDIA,'clear']);
+    const tableMap=[[RESTAURANTS,staged.entries],[LISTS,staged.lists],[VISITS,staged.visits],[LOCATIONS,staged.locations]];
+    // Database changes across all four stores are one atomic transaction.
+    for(const [table,rows] of tableMap){
+      if(mode==='replace')ops.push([table,'clear']);
+      for(const row of rows)ops.push([table,'put',row]);
+    }
+    await mutateStores(ops);
+  }catch(error){
+    for(const key of applied.reverse()){try{const previous=prior.get(key);if(previous===null)localStorage.removeItem(key);else localStorage.setItem(key,previous)}catch(rollbackError){console.error('Local preference rollback failed',rollbackError)}}
+    throw error;
+  }
+  entries=staged.entries;lists=staged.lists;visits=staged.visits;locationMedia=staged.locations;prefs=nextPrefs;profile=nextProfile;earnedRewardLevels=restoredLevels;
+  pendingImport=null;$('importDialog').close();render();renderDrafts();renderBackupStatus();notify('Backup restored: restaurants, visits, lists, photos and drafts.');
+ }catch(error){console.error('Import was cancelled or rolled back',error);notify('Import failed; your journal was not overwritten.','error');alert('Recolleat did not complete the import: '+error.message)}
+ finally{btns.forEach(b=>b.disabled=false)}
+}
+/* Laboratory scores are previews: no stored restaurant rating is changed. */
+function labWeights(){return prefs.labWeights||DEFAULT_PREFS.labWeights}
+function labScoreRaw(e){
+  const w=labWeights();
+  if(e.valueScore===null&&w.value>0)return null;
+  return (w.food*Number(e.foodScore||0)+w.value*Number(e.valueScore||0)+w.service*serviceNumericScore(e.service))/100;
+}
+function labSorted(){return [...entries].sort((a,b)=>{
+  const x=labScoreRaw(a),y=labScoreRaw(b);
+  if(x===null)return y===null?a.restaurant.localeCompare(b.restaurant):1;
+  if(y===null)return -1;
+  return y-x || b.foodScore-a.foodScore || a.restaurant.localeCompare(b.restaurant);
+})}
+function readLabWeightInputs(){
+  const fields=['labFood','labValue','labService'];const values=fields.map(id=>$(id).value.trim());
+  if(values.some(v=>v==='' || !/^\d+$/.test(v)))return {ok:false,message:'Enter whole numbers for all three weights.'};
+  const nums=values.map(Number);if(nums.some(v=>v<0||v>100))return {ok:false,message:'Each weight must be from 0 to 100.'};
+  const total=nums.reduce((a,b)=>a+b,0);
+  if(total!==100)return {ok:false,message:`Weights currently total ${total}%. They must add to exactly 100% before applying.`,total};
+  return {ok:true,weights:{food:nums[0],value:nums[1],service:nums[2]},total};
+}
+function updateLabValidity(){
+  const result=readLabWeightInputs();const status=$('labTotal');status.textContent=result.ok?'Ready: 100%. Press Apply weights to preview rankings.':result.message;
+  status.style.color=result.ok?'var(--accent)':'#e48b82';$('labSubmit').disabled=!result.ok;
+}
+function submitLabWeights(ev){ev.preventDefault();const result=readLabWeightInputs();if(!result.ok){updateLabValidity();return}prefs.labWeights=result.weights;savePrefs();renderLab()}
+function labCuisineRanks(sorted){
+  const rank=new Map(sorted.map((e,i)=>[e.id,i+1])),groups=new Map();
+  for(const e of entries){const c=e.cuisine.trim()||"Uncategorised";if(!groups.has(c))groups.set(c,[]);groups.get(c).push(rank.get(e.id))}
+  const medianOf=xs=>{const s=[...xs].sort((a,b)=>a-b);return s.length%2?s[(s.length-1)/2]:(s[s.length/2-1]+s[s.length/2])/2};
+  return [...groups].filter(([,r])=>r.length>=3).map(([cuisine,r])=>({cuisine,count:r.length,median:medianOf(r),average:r.reduce((a,b)=>a+b,0)/r.length})).sort((a,b)=>a.median-b.median||a.average-b.average||a.cuisine.localeCompare(b.cuisine));
+}
+function renderLab(){
+  const w=labWeights();
+  for(const [k,id] of [["food","labFood"],["value","labValue"],["service","labService"]]){$(id).value=w[k]}
+  updateLabValidity();
+  const sorted=labSorted(),original=grandRankMap();
+  const eligible=sorted.filter(e=>labScoreRaw(e)!==null);
+  $("labTopRestaurants").innerHTML=leaderboardStage(eligible.map(e=>({id:e.id,name:e.restaurant,sub:e.cuisine||"Uncategorised",image:e.photos?.[0]||getLocationImage(e.location),metric:`${roundToTwoSigFigs(labScoreRaw(e))} pts`})),"RESTAURANT",false);
+  const cuisineRows=labCuisineRanks(sorted).map(c=>{
+    const sample=entries.filter(e=>e.cuisine===c.cuisine).sort((a,b)=>(labScoreRaw(b)??-1)-(labScoreRaw(a)??-1))[0];
+    return {name:c.cuisine,sub:`${c.count} restaurants`,metric:`Median #${roundToTwoSigFigs(c.median)}`,image:sample?.photos?.[0]||getLocationImage(sample?.location)};
+  });
+  $("labCuisinePodium").innerHTML=leaderboardStage(cuisineRows,"CUISINE",false);
+
+}
+/* Dish Universe reuses the already-saved restaurant dishes and never duplicates entries. */
+function dishCategory(item){
+  if(item.category&&item.category.trim())return item.category.trim();
+  const n=String(item.name||"").toLowerCase();
+  const rules=[
+    ["Burger",/\b(burger|cheeseburger|hamburger|smash)\b/],
+    ["Pizza",/\b(pizza|margherita|pepperoni|calzone)\b/],
+    ["Kebab",/\b(kebab|shawarma|doner|döner|gyros|souvlaki)\b/],
+    ["Steak",/\b(steak|ribeye|sirloin|fillet mignon|filet mignon|tomahawk)\b/],
+    ["Sushi",/\b(sushi|sashimi|nigiri|maki|uramaki)\b/],
+    ["Curry",/\b(curry|tikka|korma|biryani|vindaloo|masala)\b/],
+    ["Pasta",/\b(pasta|spaghetti|carbonara|lasagn\w*|ravioli|gnocchi|tagliatelle)\b/],
+    ["Dessert",/\b(cake|ice cream|gelato|tiramisu|baklava|brownie|pudding|cheesecake|waffle|churros|mousse|cookie)\b/],
+    ["Seafood",/\b(fish|prawn|shrimp|lobster|salmon|oyster|calamari|squid|crab)\b/],
+    ["Breakfast",/\b(breakfast|pancake|omelette|eggs benedict|french toast)\b/],
+    ["Sandwich",/\b(sandwich|panini|toastie|bagel|bánh mì|banh mi)\b/],
+    ["Noodles",/\b(ramen|udon|noodle|pho|pad thai)\b/],
+    ["Salad",/\b(salad|tabbouleh|fattoush)\b/]
+  ];
+  return rules.find(([,re])=>re.test(n))?.[0]||"Other dishes";
+}
+function allDishes(){
+ const legacy=entries.flatMap(e=>(e.items||[]).map((item,index)=>({item,e,index,key:`restaurant:${e.id}:${index}`,categories:dishCategoriesForItem(item),score:Number(item.rating)||0})).filter(d=>d.item.name?.trim()));
+ const byId=new Map(entries.map(e=>[e.id,e]));
+ const logged=visits.flatMap(v=>(v.dishes||[]).map((item,index)=>({item,e:byId.get(v.restaurantId),index,key:`visit:${v.id}:${item.id||index}`,visitId:v.id,categories:dishCategoriesForItem(item),score:Number(item.rating)})).filter(d=>d.e&&d.item.name?.trim()&&d.item.rating!==null&&Number.isFinite(d.score)));
+ return [...legacy,...logged];
+}
+function dishRarity(score){const n=Math.max(0,Math.min(10,Number(score)||0));if(n>=10)return "food_legend";if(n>=9)return "unforgettable";if(n>=8)return "house_favourite";if(n>=7)return "crave_worthy";if(n>=6)return "everyday";if(n>=5)return "average";if(n>=4)return "one_time";if(n>=3)return "terrible";if(n>=2)return "scam";return "torture";}
+const DISH_RARITY_LABELS={"food_legend":"Food of Legend","unforgettable":"Unforgettable","house_favourite":"House Favourite","crave_worthy":"Crave Worthy","everyday":"Everyday","average":"Average","one_time":"Just the one time","terrible":"Terrible","scam":"Scam","torture":"Potential Torture"};
+function renderDishes(){
+  const all=allDishes(),q=$('dishSearch').value.trim().toLowerCase(),selected=$('dishCategoryFilter').value,rarityFilter=$('dishRarityFilter').value,sort=$('dishSort').value;
+  if(q||selected||rarityFilter)$('hallAccordion').dataset.compact='false';
+  const toggle=$('toggleDishRanking');if(toggle){const compact=$('hallAccordion').dataset.compact==='true';toggle.hidden=all.length<=7;toggle.textContent=compact?`Show all ${all.length} dishes`:'Show only the first 7 dishes';toggle.setAttribute('aria-expanded',String(!compact));}
+  const categories=dishCategoryCatalog();
+  renderDishCategoryManager();
+  $('dishCategoryFilter').innerHTML='<option value="">All categories</option>'+categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  $('dishCategoryFilter').value=categories.includes(selected)?selected:'';
+  const restSelect=$('dishAddRestaurant').value;
+  $('dishAddRestaurant').innerHTML='<option value="">Select restaurant</option>'+[...entries].sort((a,b)=>a.restaurant.localeCompare(b.restaurant)).map(e=>`<option value="${esc(e.id)}">${esc(e.restaurant)}</option>`).join('');
+  if(entries.some(e=>e.id===restSelect))$('dishAddRestaurant').value=restSelect;
+  const globalRank=all.slice().sort((a,b)=>b.score-a.score||a.item.name.localeCompare(b.item.name)||a.e.restaurant.localeCompare(b.e.restaurant));
+  const rankIndex=new Map(globalRank.map((d,i)=>[d.key,i+1]));
+  const collection=all.filter(d=>(!selected||d.categories.some(c=>c.toLowerCase()===selected.toLowerCase()))&&(!rarityFilter||dishRarity(d.score)===rarityFilter)&&(!q||[d.item.name,...d.categories,d.e.restaurant,d.e.cuisine].join(' ').toLowerCase().includes(q)));
+  collection.sort((a,b)=>sort==='low'?a.score-b.score||a.item.name.localeCompare(b.item.name):sort==='name'?a.item.name.localeCompare(b.item.name):sort==='restaurant'?a.e.restaurant.localeCompare(b.e.restaurant)||b.score-a.score:b.score-a.score||a.item.name.localeCompare(b.item.name));
+  $('dishStats').innerHTML=`<div class="dish-stat"><span>Matching dishes</span><strong>${collection.length}<small> / ${all.length}</small></strong></div><div class="dish-stat"><span>Categories</span><strong>${new Set(collection.flatMap(d=>d.categories)).size}</strong></div>`;
+  $('hallCount').textContent=`${collection.length} of ${all.length} dishes`;
+  const rarityCounts=Object.fromEntries(Object.keys(DISH_RARITY_LABELS).map(k=>[k,0]));all.forEach(d=>rarityCounts[dishRarity(d.score)]++);
+  const rarityLegend=`<div class="hof-rarity-legend"><button type="button" data-choose-dish-rarity="" class="${!rarityFilter?'active':''}">All · ${all.length}</button>${Object.keys(DISH_RARITY_LABELS).map(r=>`<button type="button" class="${r===rarityFilter?'active':''}" data-choose-dish-rarity="${r}">${DISH_RARITY_LABELS[r]} · ${rarityCounts[r]}</button>`).join('')}</div>`;
+  $('hallOfFlavour').innerHTML=`<section class="hof-shell"><div class="hof-head"><div><span class="feature-kicker">THE COMPLETE HALL OF FLAVOUR</span><h3>Every dish has a place on the leaderboard</h3><p>Rating tier is determined by the dish's score, not by the number of cards on display. Rank numbers stay consistent when filtering.</p></div>${rarityLegend}</div><div class="hof-ranking">${collection.length?collection.map(d=>{const r=dishRarity(d.score),img=d.item.photo||d.e.photos?.[0]||getLocationImage(d.e.location),rank=rankIndex.get(d.key);return `<article class="hof-ranking-row ${r}" data-global-dish-rank="${rank}"><div class="hof-position">#${rank}</div><div class="hof-thumb">${img?`<img loading="lazy" src="${esc(img)}" alt="${esc(d.item.name)}">`:'✦'}</div><div class="hof-name"><h3>${esc(d.item.name)}</h3><p><button type="button" class="name-btn" data-open-passport="${esc(d.e.id)}">${esc(d.e.restaurant)}</button> · ${esc(d.e.cuisine||'Uncategorised')}</p><div class="hof-list-cats">${d.categories.map(c=>`<button type="button" data-open-dish-book="${esc(c)}" title="Open ${esc(c)} stamp book">${esc(c)} ↗</button>`).join('')}</div><div class="hof-row-actions">${d.visitId?`<button type="button" data-edit-visit="${esc(d.visitId)}">Edit visit · ${esc(formatVisitDate(visits.find(v=>v.id===d.visitId)?.date))}</button>`:`<button type="button" data-edit-dish-categories="${esc(d.e.id)}" data-dish-index="${d.index}">Edit categories</button><button type="button" data-dish-photo="${esc(d.e.id)}" data-dish-index="${d.index}">Paste photo</button>`}</div></div><div class="hof-rank-rarity">${DISH_RARITY_LABELS[r]}</div><div class="hof-rank-score">${d.score.toFixed(1)}<small>/10</small></div></article>`}).join(''):`<div class="hof-empty reco-empty-state"><b>${all.length?'No matching dishes':'Your dish collection starts here'}</b><p>${all.length?'Try another category, search or rating tier.':'Add your first restaurant, then record a dish and rating to start your Hall of Flavour.'}</p><button type="button" data-empty-action="${all.length?'clear-dish-filters':'add-restaurant'}">${all.length?'Clear dish filters':'Add a restaurant'}</button></div>`}</div></section>`;
+  // Category stamp books show every category containing dishes, independently of the Hall filters.
+  const groups=new Map();for(const d of all)for(const cat of d.categories){const name=categories.find(c=>c.toLowerCase()===cat.toLowerCase())||cat;const key=name.toLowerCase();if(!groups.has(key))groups.set(key,{name,items:[]});groups.get(key).items.push(d)}
+  const pages=[...groups.values()].filter(g=>g.items.length).sort((a,b)=>b.items.length-a.items.length||a.name.localeCompare(b.name));
+  $('dishCategorySectionCount').textContent=`${pages.length} stamp books`;
+  $('dishCategoryHighlights').innerHTML=pages.length?pages.map(g=>{const best=[...g.items].sort((a,b)=>b.score-a.score)[0];return `<button type="button" class="dish-stamp-category" data-open-dish-book="${esc(g.name)}"><div class="dish-stamp-cat-title"><b>◈ ${esc(g.name)}</b><span>${g.items.length} stamps</span></div><p>Top dish: ${esc(best.item.name)} · ${best.score.toFixed(1)}/10</p><span class="dish-stamp-action">📖 Open ${esc(g.name)} stamp book →</span></button>`}).join(''):'<div class="hof-empty reco-empty-state"><b>No category collections yet</b><p>Add a category to a rated dish to build your first stamp book.</p><button type="button" data-empty-action="add-restaurant">Add a restaurant</button></div>';
+}
+
+function tastePartialPooling(groups, globalValues, minimumN=3){
+  const valid=groups.map(g=>({...g,values:(g.values||[]).filter(Number.isFinite)})).filter(g=>g.values.length>=minimumN);
+  if(!valid.length)return [];
+  const all=(globalValues||[]).filter(Number.isFinite), background=all.length?all:valid.flatMap(g=>g.values);
+  const globalMean=background.reduce((s,v)=>s+v,0)/background.length;
+  const floorVariance=Math.pow(Math.max(0.1,(Math.max(...background)-Math.min(...background))/25),2);
+  let residual=0,withinDf=0;
+  const summaries=valid.map(g=>{const n=g.values.length,mean=g.values.reduce((s,v)=>s+v,0)/n;residual+=g.values.reduce((s,v)=>s+(v-mean)**2,0);withinDf+=n-1;return {...g,n,mean}});
+  const totalVariance=background.reduce((s,v)=>s+(v-globalMean)**2,0)/Math.max(1,background.length-1);
+  const within=Math.max(floorVariance,withinDf?residual/withinDf:totalVariance);
+  const center=summaries.reduce((s,g)=>s+g.mean,0)/summaries.length;
+  const meanVariance=summaries.reduce((s,g)=>s+(g.mean-center)**2,0)/Math.max(1,summaries.length-1);
+  const avgSampling=summaries.reduce((s,g)=>s+within/g.n,0)/summaries.length;
+  // Regularized between-group variance prevents unstable all-or-nothing pooling in tiny datasets.
+  const between=Math.max(within/8,meanVariance-avgSampling);
+  return summaries.map(g=>{const sampleVariance=within/g.n, weight=between/(between+sampleVariance);
+    const posterior=globalMean+weight*(g.mean-globalMean), posteriorSd=Math.sqrt(between*sampleVariance/(between+sampleVariance));
+    return {...g,posterior,posteriorSd,lower:posterior-1.28155*posteriorSd,shrinkageWeight:weight,globalMean};
+  }).sort((a,b)=>b.lower-a.lower||b.posterior-a.posterior||b.n-a.n);
+}
+function renderSignatureGallery(top,chosen){
+  const displayed=top.slice(0,chosen),container=$('dnaHighlights');
+  if(!displayed.length){container.innerHTML='<div class="museum-empty"><span>✦</span><h4>Your exhibition starts with a dish.</h4><p>Rate dishes in your restaurant collection to fill this gallery.</p></div>';return}
+  signatureGalleryIndex=Math.max(0,Math.min(displayed.length-1,signatureGalleryIndex));
+  const selected=displayed[signatureGalleryIndex],count=displayed.length;
+  const title=selected.item.name||'Untitled dish';
+  const slots=[];
+  for(let relative=-3;relative<=3;relative++){
+    const i=signatureGalleryIndex+relative;
+    if(i<0||i>=count)continue;
+    const d=displayed[i],photo=d.item.photo||d.e.photos?.[0]||getLocationImage(d.e.location);
+    slots.push(`<button type="button" class="museum-art" data-gallery-go="${i}" data-offset="${relative}" ${relative===0?'aria-current="true"':''} aria-label="View dish ${i+1}: ${esc(d.item.name)}" title="${esc(d.item.name)} · ${d.score.toFixed(1)}/10"><span class="museum-art-frame">${photo?`<img src="${esc(photo)}" loading="lazy" alt="${esc(d.item.name)}">`:'<span class="museum-art-placeholder">✦</span>'}</span><span class="museum-art-no">${String(i+1).padStart(2,'0')}</span></button>`);
+  }
+  container.innerHTML=`<div class="museum-gallery" id="museumGallery" role="region" aria-label="Signature dish gallery. Scroll to change dishes." tabindex="0">
+    <div class="museum-horizon" aria-hidden="true">RECOLLEAT&nbsp;&nbsp; / &nbsp;&nbsp; A PRIVATE COLLECTION</div>
+    <div class="museum-side-note museum-side-note-left" aria-hidden="true">THE COLLECTION <span>FOOD / MEMORY / PLACE</span></div>
+    <div class="museum-side-note museum-side-note-right" aria-hidden="true">NO. ${String(signatureGalleryIndex+1).padStart(2,'0')} <span>OF ${String(count).padStart(2,'0')}</span></div>
+    <div class="museum-gallery-stage">${slots.join('')}</div>
+    <div class="museum-caption" aria-live="polite"><span class="museum-caption-eyebrow">SELECTED WORK / ${String(signatureGalleryIndex+1).padStart(2,'0')}—${String(count).padStart(2,'0')}</span>
+      <h4>${esc(title)}</h4><p>${esc(selected.e.restaurant)} · ${esc(selected.e.cuisine||'Cuisine unspecified')}</p>
+      <div class="museum-caption-bottom"><span class="museum-rating">${selected.score.toFixed(1)}<small> / 10</small></span><button class="museum-restaurant-link" type="button" data-open-passport="${esc(selected.e.id)}">View restaurant ↗</button></div>
+    </div>
+    <div class="museum-foot"><button type="button" class="museum-arrow" data-gallery-shift="-1" ${signatureGalleryIndex===0?'disabled':''} aria-label="Previous dish">←</button>
+      <div class="museum-progress" role="progressbar" aria-label="Gallery position" aria-valuemin="1" aria-valuemax="${count}" aria-valuenow="${signatureGalleryIndex+1}"><span style="width:${100*(signatureGalleryIndex+1)/count}%"></span></div>
+      <span class="museum-index">${String(signatureGalleryIndex+1).padStart(2,'0')} / ${String(count).padStart(2,'0')}</span>
+      <button type="button" class="museum-arrow" data-gallery-shift="1" ${signatureGalleryIndex===count-1?'disabled':''} aria-label="Next dish">→</button></div>
+    <div class="museum-instructions">SCROLL TO EXPLORE &nbsp; · &nbsp; USE ARROWS TO NAVIGATE</div>
+  </div>`;
+}
+function galleryNavigate(next){
+  const max=Math.min(40,allDishes().filter(d=>Number.isFinite(d.score)).length,Math.max(1,Math.floor(Number(prefs.dnaTopCount)||8)));
+  const newIndex=Math.max(0,Math.min(Math.max(0,max-1),next));
+  if(newIndex===signatureGalleryIndex)return false;
+  signatureGalleryIndex=newIndex;
+  // Only redraw the exhibition; don't recalculate the complete Food DNA dashboard.
+  const top=allDishes().filter(d=>Number.isFinite(d.score)).sort((a,b)=>b.score-a.score||a.item.name.localeCompare(b.item.name));
+  renderSignatureGallery(top,max);
+  return true;
+}
+/* Palate Code: an observational, dish-based typology, not a psychological test. */
+const PALATE_PERSONAS = {"ELVT":{"name":"The Frugal Connoisseur","description":"Your dishes span a relatively broad mix of cuisines; certain dish types recur across different restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"ELVG":{"name":"The Curious Regular","description":"Your dishes span a relatively broad mix of cuisines; certain dish types recur across different restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"ELIT":{"name":"The Selective Epicure","description":"Your dishes span a relatively broad mix of cuisines; certain dish types recur across different restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"ELIG":{"name":"The Loyal Bon Vivant","description":"Your dishes span a relatively broad mix of cuisines; certain dish types recur across different restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"ERVT":{"name":"The Budget Scout","description":"Your dishes span a relatively broad mix of cuisines; you record a wide variety of dish types with few recurring names across restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"ERVG":{"name":"The Openhearted Explorer","description":"Your dishes span a relatively broad mix of cuisines; you record a wide variety of dish types with few recurring names across restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"ERIT":{"name":"The Luxury Pathfinder","description":"Your dishes span a relatively broad mix of cuisines; you record a wide variety of dish types with few recurring names across restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"ERIG":{"name":"The Adventurous Indulger","description":"Your dishes span a relatively broad mix of cuisines; you record a wide variety of dish types with few recurring names across restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SLVT":{"name":"The Strict Traditionalist","description":"Your rated dishes concentrate in a smaller set of cuisines; certain dish types recur across different restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SLVG":{"name":"The Comfort Keeper","description":"Your rated dishes concentrate in a smaller set of cuisines; certain dish types recur across different restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SLIT":{"name":"The Discerning Patron","description":"Your rated dishes concentrate in a smaller set of cuisines; certain dish types recur across different restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SLIG":{"name":"The Devoted Epicure","description":"Your rated dishes concentrate in a smaller set of cuisines; certain dish types recur across different restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SRVT":{"name":"The Practical Purist","description":"Your rated dishes concentrate in a smaller set of cuisines; you record a wide variety of dish types with few recurring names across restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SRVG":{"name":"The Easygoing Sampler","description":"Your rated dishes concentrate in a smaller set of cuisines; you record a wide variety of dish types with few recurring names across restaurants; you tend to rate lower-spend restaurants relatively more highly; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SRIT":{"name":"The High-End Hunter","description":"Your rated dishes concentrate in a smaller set of cuisines; you record a wide variety of dish types with few recurring names across restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit below a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."},"SRIG":{"name":"The Lavish Wanderer","description":"Your rated dishes concentrate in a smaller set of cuisines; you record a wide variety of dish types with few recurring names across restaurants; higher-spend restaurants tend to earn stronger dish scores from you; and your restaurant-balanced dish ratings sit above a neutral 7.5 reference. These patterns describe your logged dishes, not your personality outside food."}};
+let dnaActiveTab='signature';
+function setDNATab(tab,focus=false){
+  dnaActiveTab=['code','signature','stamps'].includes(tab)?tab:'code';
+  document.querySelectorAll('[data-dna-tab]').forEach(b=>{
+    const active=b.dataset.dnaTab===dnaActiveTab;
+    b.classList.toggle('active',active);
+    b.setAttribute('aria-selected',active?'true':'false');
+    b.tabIndex=active?0:-1;
+    if(active&&focus)b.focus();
+  });
+  document.querySelectorAll('[data-dna-panel]').forEach(panel=>{panel.hidden=panel.dataset.dnaPanel!==dnaActiveTab});
+}
+const pcClamp=(value,lower=0,upper=100)=>Math.min(upper,Math.max(lower,value));
+function pcRank(values){
+  const sorted=values.map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v),rank=Array(values.length);
+  for(let i=0;i<sorted.length;){let j=i+1;while(j<sorted.length&&sorted[j].v===sorted[i].v)j++;
+    const avg=(i+1+j)/2;for(let k=i;k<j;k++)rank[sorted[k].i]=avg;i=j;
+  }return rank;
+}
+function pcCorrelation(x,y){
+  if(x.length!==y.length||x.length<3)return null;
+  const a=pcRank(x),b=pcRank(y),ma=a.reduce((s,v)=>s+v,0)/a.length,mb=b.reduce((s,v)=>s+v,0)/b.length;
+  let num=0,da=0,db=0;
+  for(let i=0;i<a.length;i++){const dx=a[i]-ma,dy=b[i]-mb;num+=dx*dy;da+=dx*dx;db+=dy*dy}
+  return da>0&&db>0?num/Math.sqrt(da*db):null;
+}
+function palateCodeModel(){
+  // All metrics are observational; the maturity bar reports coverage, NOT scientific confidence.
+  const rated=allDishes().filter(d=>d.item.name?.trim()&&d.item.rating!==''&&d.item.rating!=null&&Number.isFinite(Number(d.item.rating))&&Number(d.item.rating)>=0&&Number(d.item.rating)<=10);
+  const n=rated.length;
+  const knownCuisine=rated.filter(d=>String(d.e.cuisine||'').trim());
+  const cuisineCounts=new Map();
+  for(const d of knownCuisine){const k=d.e.cuisine.trim().toLocaleLowerCase();cuisineCounts.set(k,(cuisineCounts.get(k)||0)+1)}
+  const cn=knownCuisine.length;
+  // Unbiased pairwise concentration: chance two different ratings share a cuisine.
+  const conc=cn>=2?[...cuisineCounts.values()].reduce((sum,c)=>sum+c*(c-1),0)/(cn*(cn-1)):1;
+  const neff=conc>0?Math.min(cuisineCounts.size,1/conc):cuisineCounts.size;
+  const explore=cn>=12?pcClamp(50+(neff-2.4)*24):null;
+  // Share of named rated dishes belonging to a dish name observed in >=2 distinct restaurants.
+  const nameGroups=new Map();
+  for(const d of rated){const k=d.item.name.trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();if(!k)continue;
+    if(!nameGroups.has(k))nameGroups.set(k,{count:0,restaurants:new Set()});
+    const g=nameGroups.get(k);g.count++;g.restaurants.add(d.e.id);
+  }
+  const loyaltyHits=[...nameGroups.values()].filter(g=>g.restaurants.size>=2).reduce((sum,g)=>sum+g.count,0);
+  const distinctDishRestaurants=new Set(rated.map(d=>d.e.id)).size;
+  // 8 synthetic observations at a neutral 30% baseline mitigate instability in short collections.
+  const repeatObserved=n?loyaltyHits/n:0;
+  const repeatShrunk=(loyaltyHits+8*.30)/(n+8);
+  const roam=(n>=12&&distinctDishRestaurants>=5&&Math.abs(repeatShrunk-.30)>=.035)?pcClamp(50+(.30-repeatShrunk)*190):null;
+  // One price observation per restaurant. Its listed per-person price is preferred;
+  // if absent, the mean recorded personal food value of dated visits is a transparent proxy.
+  const restaurantScores=new Map();
+  const visitFoodValues=new Map();
+  for(const v of visits){const value=Number(v.foodValue);if(v.foodValue===null||v.foodValue===undefined||!Number.isFinite(value)||value<=0)continue;
+    if(!visitFoodValues.has(v.restaurantId))visitFoodValues.set(v.restaurantId,[]);
+    visitFoodValues.get(v.restaurantId).push(value);
+  }
+  for(const d of rated){const id=d.e.id;
+    const listed=Number(d.e.pp);
+    const amounts=visitFoodValues.get(id)||[];
+    const price=Number.isFinite(listed)&&listed>0?listed:(amounts.length?amounts.reduce((s,x)=>s+x,0)/amounts.length:null);
+    if(price===null)continue;
+    if(!restaurantScores.has(id))restaurantScores.set(id,{price,sum:0,count:0});
+    const r=restaurantScores.get(id);r.sum+=Number(d.item.rating);r.count++;
+  }
+  const priced=[...restaurantScores.values()].map(r=>({price:r.price,score:r.sum/r.count}));
+  const rawRho=pcCorrelation(priced.map(r=>r.price),priced.map(r=>r.score));
+  const rho=rawRho===null?null:rawRho*priced.length/(priced.length+12);
+  const enoughPrice=priced.length>=10&&new Set(priced.map(r=>r.price)).size>=4;
+  const neutralPrice=enoughPrice&&rho!==null&&Math.abs(rho)<.09;
+  const indulgence=enoughPrice&&rho!==null?(neutralPrice?50:pcClamp(50+rho*95)):null;
+  // Restaurant-balanced mean score avoids inflating generosity via one large restaurant menu.
+  const allRests=new Map();for(const d of rated){const id=d.e.id;if(!allRests.has(id))allRests.set(id,{sum:0,count:0});const r=allRests.get(id);r.sum+=Number(d.item.rating);r.count++}
+  const means=[...allRests.values()].map(r=>r.sum/r.count),rN=means.length;
+  const observedMean=rN?means.reduce((sum,x)=>sum+x,0)/rN:null;
+  const shrunkMean=rN?(rN*observedMean+4*7.5)/(rN+4):null;
+  const generosity=n>=12&&rN>=5&&Math.abs(shrunkMean-7.5)>=.12?pcClamp(50+(shrunkMean-7.5)*20):null;
+  const axes=[
+    {left:'Explorer',right:'Specialist',l:'E',r:'S',value:explore===null?null:100-explore,source:cn,target:40,explain:'Uses cuisine breadth adjusted for small samples. Repeated dishes in one cuisine do not falsely increase diversity. Threshold: about 2.4 effective cuisines.',detail:explore===null?'Needs at least 12 rated dishes with cuisines.':`${cn} cuisine-linked dishes · ${neff.toFixed(2)} effective cuisines`},
+    {left:'Loyalist',right:'Roamer',l:'L',r:'R',value:roam,source:n,target:50,explain:'Loyalist means favouring the same dish types across different restaurants, not returning to the same restaurant. Compares matched normalised dish names, shrunk toward a neutral reference. Cannot prove actual ordering frequency.',detail:roam===null?'Needs 12 rated dishes across 5 restaurants and a clear pattern.':`${loyaltyHits}/${n} dishes share a name across different restaurants · adjusted ${(repeatShrunk*100).toFixed(0)}%`},
+    {left:'Value-first',right:'Indulgent',l:'V',r:'I',value:indulgence,balanced:neutralPrice,source:priced.length,target:10,explain:'Across distinct restaurants, compares average dish ratings with listed spend per person or the average recorded food value of your own visits. Missing prices are excluded and the correlation is adjusted for sample size. A balanced result means no strong relationship, not missing data.',detail:!enoughPrice?`${priced.length} of 10 priced restaurants with rated dishes. Add meal values or restaurant prices to help complete this trait.`:neutralPrice?`${priced.length} priced restaurants · no clear price-rating preference (balanced).`:`${priced.length} priced restaurants · adjusted association ${rho.toFixed(2)}`},
+    {left:'Tough grader',right:'Generous grader',l:'T',r:'G',value:generosity,source:rN,target:35,explain:'Balances average ratings across restaurants so long dish menus cannot dominate. Mean is gently shrunk toward 7.5/10 with four neutral reference restaurants. Near-neutral results stay undecided.',detail:generosity===null?'Needs 12 rated dishes at 5 restaurants and a clear mean-rating difference.':`${rN} rated restaurants · adjusted mean ${shrunkMean.toFixed(2)}/10`}
+  ];
+  const letters=axes.map((a,i)=>a.balanced?'?':a.value===null?'?':(i===0?a.value>50:a.value>=50)?a.r:a.l);
+  const code=letters.join(''),complete=!code.includes('?');
+  const readiness=axes.reduce((sum,a)=>sum+Math.min(1,a.source/a.target),0)/axes.length*100;
+  const supported=axes.filter(a=>a.value!==null).length;
+  const maturity=supported<2?'Starting out':supported<4?'Developing':readiness<65?'Developing':readiness<90?'Established':'Seasoned';
+  return {rated:n,code,complete,persona:complete?PALATE_PERSONAS[code]:null,axes,readiness:Math.round(readiness),supported,maturity,distinctRestaurants:rN,observedCuisineCount:cuisineCounts.size};
+}
+
+function renderPalateCode(){
+  const node=$('palateCodeContent');if(!node)return;
+  const model=palateCodeModel();
+  const balanced=model.axes.some(a=>a.balanced);
+  const head=model.complete?`<span class="palate-kicker">YOUR PALATE PERSONA</span><h3>${esc(model.code)}</h3><strong>${esc(model.persona.name)}</strong><p>${esc(model.persona.description)}</p>`:
+    balanced?`<span class="palate-kicker">YOUR PALATE CODE</span><h3>${esc(model.code)}</h3><strong>Balanced preferences</strong><p>Your recorded meals show no clear price–rating preference. That's a result, not missing data.</p>`:
+    `<span class="palate-kicker">YOUR PALATE CODE IS FORMING</span><h3>${esc(model.code)}</h3><strong>Still learning</strong><p>Some traits need more evidence. No preference is invented.</p>`;
+  const bars=model.axes.map((a,i)=>{
+    const l=a.balanced?'≈':a.value===null?'?':(i===0?a.value>50:a.value>=50)?a.r:a.l;
+    const pct=a.value===null?50:a.value;
+    return `<article class="palate-axis"><div class="palate-axis-head"><span>${esc(a.left)}</span><span class="palate-letter" aria-label="Assigned letter">${l}</span><span>${esc(a.right)}</span></div>
+      <div class="palate-track" role="meter" aria-valuemin="0" aria-valuemax="100" ${a.value===null?'':'aria-valuenow="'+pct.toFixed(0)+'"'} aria-label="${esc(a.left)} versus ${esc(a.right)}"><span class="palate-mid"></span><i style="left:${pct}%"></i></div>
+      <p class="palate-axis-detail">${esc(a.detail)}</p></article>`;
+  }).join('');
+  const codes=Object.keys(PALATE_PERSONAS).sort();
+  const world=codes.map(code=>{const p=PALATE_PERSONAS[code],current=model.code===code;
+    return `<article class="palate-world-item ${current?'is-current':''}"><div class="palate-world-top"><b>${code}</b>${current?'<span>YOUR CODE</span>':''}</div><h4>${esc(p.name)}</h4><p>${esc(p.description)}</p></article>`;
+  }).join('');
+  node.innerHTML=`<div class="palate-hero">${head}<div class="palate-maturity"><div><b>${esc(model.maturity)} profile</b><span>${model.supported}/4 dimensions established · ${model.rated} rated dishes</span></div><strong>${model.readiness}%</strong></div><div class="maturity-track"><i style="width:${model.readiness}%"></i></div></div>
+    <details class="palate-axes-accordion"><summary>Your four traits <span>Expand ↓</span></summary><div class="palate-axes">${bars}</div></details>
+    <details class="palate-world"><summary><span><b>World of Personas</b><small>Explore all 16 possible four-letter profiles</small></span><span aria-hidden="true">⌄</span></summary><div class="palate-world-grid">${world}</div></details>`;
+}
+
+function renderDNA(){
+  const rated=allDishes().filter(d=>Number.isFinite(d.score));
+  const top=rated.slice().sort((a,b)=>b.score-a.score||a.item.name.localeCompare(b.item.name));
+  const max=Math.min(40,top.length),chosen=Math.min(max,Math.max(1,Math.floor(Number(prefs.dnaTopCount)||8)));
+  const picker=$('dnaTopCount');picker.innerHTML=Array.from({length:max},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');picker.disabled=!max;if(max)picker.value=chosen;
+  $('dnaSignatureCount').textContent=max?`Displaying ${chosen} of ${top.length} rated dishes`:'No dishes recorded yet';
+  const cuisines=[...new Set(entries.map(e=>(e.cuisine||'').trim().toLowerCase()).filter(Boolean))];
+  const intlCount=entries.filter(e=>e.international).length;
+  const overallElite=entries.filter(e=>overallScore(e)!==null&&overallScore(e)>=90).length;
+  const valueElite=entries.filter(e=>e.valueScore!==null&&e.valueScore!==undefined&&Number(e.valueScore)>=85).length;
+  const cuisineCount=new Set(entries.map(e=>e.cuisine?.trim().toLowerCase()).filter(Boolean)).size;
+  const signatureCount=top.filter(d=>d.score>=9.5).length;
+  const dates=[...entries.map(e=>firstVisitDate(e)||e.dateVisited||e.createdAt?.slice(0,10)).filter(Boolean),...visits.map(v=>v.date)].filter(Boolean).sort();
+  const yearsTracked=dates.length>=2?(new Date(dates[dates.length-1])-new Date(dates[0]))/(1000*60*60*24*365.25):0;
+  const levelInfo=(value,thresholds)=>{let level=0;for(const milestone of thresholds)if(value>=milestone)level++;const previous=level?thresholds[level-1]:0;const next=level>=10?null:thresholds[level];return {level,maxed:level===10,nextTarget:next,pct:level===10?100:Math.max(0,Math.min(100,100*(value-previous)/Math.max(.01,next-previous)))};};
+  const achievements=[
+    {icon:'🏛️',title:'Restaurant Archivist',desc:'Build a serious lifelong collection of restaurant memories.',value:entries.length,unit:'restaurants',thresholds:[3,10,25,50,90,150,230,350,500,750]},
+    {icon:'🧭',title:'World on a Plate',desc:'Discover and document different cuisines.',value:cuisineCount,unit:'cuisines',thresholds:[1,3,5,10,15,20,25,30,40,50]},
+    {icon:'🌍',title:'Passport of Palate',desc:'Track more restaurants outside the United Kingdom.',value:intlCount,unit:'international restaurants',thresholds:[2,6,12,25,45,75,110,160,230,320]},
+    {icon:'🥇',title:'Gold Table',desc:'Collect restaurants with an overall rating of at least 90.',value:overallElite,unit:'90+ overall restaurants',thresholds:[1,3,6,10,16,25,40,60,90,140]},
+    {icon:'💸',title:'Value Vault',desc:'Find exceptional restaurants scoring at least 85 for value.',value:valueElite,unit:'85+ value restaurants',thresholds:[2,6,12,22,38,60,95,140,200,290]},
+    {icon:'📖',title:'Stamp Collector',desc:'Build an extensive collection of rated dishes.',value:rated.length,unit:'rated dishes',thresholds:[5,15,35,65,110,180,280,420,600,850]},
+    {icon:'👑',title:'House of Legends',desc:'Collect dishes rated 9.5 or higher.',value:signatureCount,unit:'9.5+ dishes',thresholds:[1,3,6,12,20,35,55,85,125,180]},
+    {icon:'🕰️',title:'The Long Table',desc:'Build an enduring dining history spanning at least five years.',value:yearsTracked,unit:'years tracked',thresholds:[.1,.25,.5,.8,1.25,1.75,2.5,3.5,4.25,5]}
+  ].map(a=>({...a,...levelInfo(a.value,a.thresholds)}));
+  $('culinaryPassport').innerHTML=achievements.map(a=>{const v=a.title==='The Long Table'?`${a.value.toFixed(1)} years`:`${Math.floor(a.value)} ${a.unit}`;const next=a.maxed?'All 10 levels completed':`Level ${a.level+1}: ${a.title==='The Long Table'?a.nextTarget.toFixed(a.nextTarget<1?2:1):a.nextTarget} ${a.unit}`;return `<article class="passport-badge ${a.maxed?'earned maxed':a.level>=6?'earned':''}"><div class="stamp-icon">${a.icon}</div><div class="passport-level-pill"><span>Level</span><strong>${a.level}</strong><span>/ 10</span></div><h4>${esc(a.title)}</h4><p>${esc(a.desc)}</p><div class="passport-progress"><div style="width:${a.pct.toFixed(1)}%"></div></div><div class="passport-metric"><span>${esc(v)}</span><span>${a.maxed?'Mastered':`${Math.round(a.pct)}% to next`}</span></div><small>${esc(next)}</small></article>`}).join('');
+  renderSignatureGallery(top,chosen);
+  renderPalateCode();
+  setDNATab(dnaActiveTab);
+}
+
+async function deleteDishCategory(name){
+  if(!name||name==='Uncategorised')return;
+  const count=allDishes().filter(d=>d.categories.some(c=>c.toLowerCase()===name.toLowerCase())).length;
+  if(!confirm(`Remove category "${name}" from the catalogue and ${count} matching dishes? Dishes themselves and ratings will remain.`))return;
+  const key=name.toLowerCase();
+  for(const e of entries){let changed=false;
+    for(const item of e.items){const explicit=explicitDishCategories(item);const reduced=explicit.filter(c=>c.toLowerCase()!==key);
+      if(explicit.length!==reduced.length){item.categories=reduced;item.category=reduced[0]||'';changed=true}
+    }
+    if(changed){e.updatedAt=new Date().toISOString();await putStore(RESTAURANTS,e)}
+  }
+  prefs.dishCategories=(prefs.dishCategories||[]).filter(c=>c.toLowerCase()!==key);
+  prefs.hiddenDishCategories=normalizeDishCategoryNames([...(prefs.hiddenDishCategories||[]),name]);savePrefs();
+  if($('dishBookDialog').open&&dishBookCategory.toLowerCase()===key)$('dishBookDialog').close();
+  render();
+}
+function openDishBook(category){dishBookCategory=category;dishBookIndex=0;renderDishBook();$('dishBookDialog').showModal()}
+function renderDishBook(){
+  const pages=allDishes().filter(d=>d.categories.some(c=>c.toLowerCase()===dishBookCategory.toLowerCase())).sort((a,b)=>b.score-a.score);
+  $('dishBookTitle').textContent=dishBookCategory+' · stamp book';$('dishBookSub').textContent=`${pages.length} ${pages.length===1?'dish':'dishes'} in this category`;
+  if(!pages.length){$('dishBookPage').innerHTML='<p class="feature-muted">No dishes in this category yet.</p>';$('dishBookCount').textContent='Empty stamp book';$('dishBookPrev').disabled=true;$('dishBookNext').disabled=true;return}
+  dishBookIndex=Math.max(0,Math.min(pages.length-1,dishBookIndex));const d=pages[dishBookIndex],img=d.item.photo||d.e.photos?.[0]||getLocationImage(d.e.location);
+  $('dishBookPage').innerHTML=`<div class="dish-book-sheet"><span class="dish-book-serial">RECOLLEAT · THE FOOD COLLECTION</span><div class="dish-book-image">${img?`<img loading="lazy" src="${esc(img)}" alt="${esc(d.item.name)}">`:'<span>✦</span>'}</div><div class="dish-book-caption"><div><span class="feature-kicker">STAMP ${dishBookIndex+1} / ${pages.length}</span><h3>${esc(d.item.name)}</h3><p>${esc(d.e.restaurant)} · ${esc(d.e.cuisine||'Uncategorised')}</p></div><div class="dish-book-score">${d.score.toFixed(1)}<small>/ 10</small></div></div><div class="dish-tags">${d.categories.map(c=>`<span class="dish-category">${esc(c)}</span>`).join('')}</div><button type="button" class="name-btn" data-open-passport="${esc(d.e.id)}">Open restaurant passport →</button></div>`;
+  $('dishBookCount').textContent=`Page ${dishBookIndex+1} of ${pages.length}`;$('dishBookPrev').disabled=dishBookIndex===0;$('dishBookNext').disabled=dishBookIndex===pages.length-1;
+}
+function openDishPhotoDialog(restaurantId,index){
+  const e=entries.find(x=>x.id===restaurantId),item=e?.items[index];if(!item)return;
+  dishPhotoContext={restaurantId,index};
+  $('dishPhotoSub').textContent=`${item.name} · ${e.restaurant} · paste a copied image to assign a dish-only photo`;
+  $('dishPhotoChoices').innerHTML=item.photo?`<div class="dish-current-photo"><img src="${esc(item.photo)}" alt="Currently assigned dish photograph"><span>Current dish photograph</span></div>`:'<p class="feature-muted">No photo assigned to this dish yet.</p>';
+  $('dishPhotoPasteZone').textContent='Click to focus, then paste with Ctrl+V or Cmd+V';
+  $('dishPhotoDialog').showModal();
+  setTimeout(()=>$('dishPhotoPasteZone').focus(),0);
+}
+async function saveDishPhoto(src){if(!dishPhotoContext)return;const {restaurantId,index}=dishPhotoContext,e=entries.find(x=>x.id===restaurantId);if(!e?.items?.[index])return;e.items[index].photo=src||'';e.updatedAt=new Date().toISOString();{const recovery=buildRecoverySnapshot('Before changing a dish photograph');await mutateStores([...(recovery?[[SNAPSHOTS,'put',recovery]]:[]),[RESTAURANTS,'put',e]])}$('dishPhotoDialog').close();render()}
+function startAddDish(){
+  const id=$("dishAddRestaurant").value;
+  if(!id){alert("Choose a restaurant first to add a dish.");return}
+  edit(id);addItemRow({name:"",rating:8,category:""});
+  const details=$('editor').querySelectorAll('details.editor-section')[1];if(details)details.open=true;
+  const rows=$('itemsEditor').querySelectorAll('.item-edit');rows[rows.length-1]?.querySelector('.dish-name')?.focus();
+}
+
+function bind(){
+  $("sidebarToggle").onclick=toggleSidebar;$("mobileSidebarBtn").onclick=openMobileMore;$("sidebarScrim").onclick=()=>setMobileSidebarOpen(false);
+  $("addDishCategoryBtn").onclick=()=>{const c=addCustomDishCategory($("newDishCategory").value);if(c){$("newDishCategory").value="";renderDishes()}};$("newDishCategory").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("addDishCategoryBtn").click()}};
+  const turnDishBook=direction=>{dishBookIndex+=direction;renderDishBook()};
+  $('dishBookPrev').onclick=()=>turnDishBook(-1);$('dishBookNext').onclick=()=>turnDishBook(1);
+  let swipeX=null;$('dishBookPage').addEventListener('touchstart',ev=>{swipeX=ev.touches?.[0]?.clientX??null},{passive:true});
+  $('dishBookPage').addEventListener('touchend',ev=>{if(swipeX===null)return;const dx=(ev.changedTouches?.[0]?.clientX??swipeX)-swipeX;swipeX=null;if(Math.abs(dx)>55)turnDishBook(dx<0?1:-1)},{passive:true});
+  document.addEventListener('keydown',ev=>{if(!$('dishBookDialog').open)return;if(ev.key==='ArrowRight'){ev.preventDefault();turnDishBook(1)}else if(ev.key==='ArrowLeft'){ev.preventDefault();turnDishBook(-1)}});
+  $('dishPhotoClear').onclick=()=>saveDishPhoto('');$('dishPhotoPasteZone').onpaste=async ev=>{const image=[...(ev.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));if(!image)return;ev.preventDefault();ev.stopPropagation();try{await saveDishPhoto(await imageToData(image.getAsFile()))}catch(err){alert('Paste failed: '+err.message)}};
+  $('dishPhotoPasteZone').onclick=()=>$('dishPhotoPasteZone').focus();
+  $("dishCategoryAddFromDialog").onclick=addCategoryInDialog;$("dishCategorySave").onclick=saveDishCategoryChanges;$("dishCategoryNewInDialog").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();addCategoryInDialog()}};
+  $("addBtn").onclick=()=>openUnifiedQuickLog();$("editorForm").onsubmit=saveEntry;
+  $('quickAddBtn').onclick=openQuickAdd;
+  $('chooseQuickAdd').onclick=()=>{$('addChoiceDialog').close();openQuickAdd()};
+  $('chooseFullAdd').onclick=()=>{$('addChoiceDialog').close();resetEditor();setEditorStep(1);$('editor').showModal()};
+  setupFoodRatingHelper();
+  $('dishRankJump').onsubmit=jumpToDishRank;
+  $('quickAddForm').onsubmit=e=>{e.preventDefault();if(upsertDraft(quickDraft())){$('quickAddDialog').close();notify('Saved as a draft. Finish it whenever you like.')}};
+  $('quickPublish').onclick=publishQuickRestaurant;
+  $('quickContinue').onclick=()=>{const d=quickDraft();$('quickAddDialog').close();resetEditor();editingDraftId=null;$('restaurant').value=d.name;$('cuisine').value=d.cuisine;$('location').value=d.location;if(Number.isFinite(d.foodScore))setFoodScore(d.foodScore);setEditorStep(1);$('editor').showModal()};
+  document.querySelectorAll('[data-editor-select-step]').forEach(b=>b.onclick=()=>setEditorStep(b.dataset.editorSelectStep));
+  $('editorPrevStep').onclick=()=>setEditorStep(editorStep-1);$('editorNextStep').onclick=()=>setEditorStep(editorStep+1);
+  $('editor').querySelector('.editor-steps').addEventListener('keydown',event=>{
+    if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;
+    const next=event.key==='Home'?1:event.key==='End'?3:((editorStep-1+(event.key==='ArrowRight'?1:2))%3)+1;
+    setEditorStep(next);$('editorStepTab'+next).focus();event.preventDefault();
+  });
+  $('editorSaveDraft').onclick=()=>{if(editingId){notify('Published restaurants are saved using Save memory.','error');return}const d=draftFromForm();if(upsertDraft(d)){$('editor').close();editingDraftId=null;notify('Draft saved safely on this device.')}};
+  $('rankJumpForm').onsubmit=e=>{
+    e.preventDefault();const rank=Math.floor(Number($('rankJumpNumber').value));const ranks=grandRankMap();
+    if(!Number.isFinite(rank)||rank<1||rank>entries.length){notify(`Choose a Grand List rank from 1 to ${entries.length}.`,'error');return}
+    const item=entries.find(x=>ranks.get(x.id)===rank);if(!item){notify('No restaurant has that rank.','error');return}
+    // Rank always refers to Grand List, not the visible row position after another sort or filter.
+    prefs.sortProperty='grandRank';prefs.sortDirection='asc';prefs.filters=clone(DEFAULT_PREFS.filters);savePrefs();syncControls();
+    mobileVisibleCount=Math.max(5,rank);render();
+    const target=[...$('mobileRestaurantFeed').children].find(node=>node.querySelector('[data-open-passport="'+item.id+'"]'));
+    if(target){target.scrollIntoView({block:'center',behavior:'smooth'});target.classList.add('jump-highlight');setTimeout(()=>target.classList.remove('jump-highlight'),1600)}
+    notify(`Showing Grand List rank #${rank}.`);
+  };
+  $('draftCards').onclick=e=>{const open=e.target.closest('[data-open-draft]'),del=e.target.closest('[data-delete-draft]');if(open)openDraft(open.dataset.openDraft);else if(del){if(confirm('Delete this unfinished draft?'))removeDraft(del.dataset.deleteDraft)}};
+  $('calendarMonthJump').onchange=e=>{if(!/^\d{4}-\d{2}$/.test(e.target.value))return;const [y,m]=e.target.value.split('-').map(Number);visitMonthCursor=new Date(y,m-1,1);selectedCalendarDate='';calendarShowingWholeMonth=false;renderVisitHistory()};
+  $("deleteBtn").onclick=deleteEntry;$("addItemBtn").onclick=()=>addItemRow();
+  $("foodScore").oninput=e=>setFoodScore(e.target.value);$("foodScoreNumber").oninput=e=>setFoodScore(e.target.value);$("valueScore").oninput=e=>{editorValueRated=true;setValueScore(e.target.value);updateEditorRatingHints()};$("valueScoreNumber").oninput=e=>{editorValueRated=true;setValueScore(e.target.value);updateEditorRatingHints()};$("pp").oninput=e=>{editorPriceRated=true;setPP(e.target.value);updateEditorRatingHints()};$("ppNumber").oninput=e=>{editorPriceRated=true;setPP(e.target.value);updateEditorRatingHints()};
+  $("editorAddVisit").onclick=()=>{workingVisits.push(normaliseVisit({id:uid(),date:"",spend:null,note:""}));renderEditorVisits()};
+  const syncEditorVisit=event=>{
+    const input=event.target.closest('.visit-date-field,.visit-food-field,.visit-spend-field,.visit-treated-field');if(!input)return;
+    const row=input.closest('[data-visit-id]'),v=workingVisits.find(x=>x.id===row?.dataset.visitId);if(!v)return;
+    v.date=row.querySelector('.visit-date-field').value;
+    v.foodValue=readMoneyInput(row.querySelector('.visit-food-field'));
+    v.paidFor=row.querySelector('.visit-treated-field').checked;
+    const own=row.querySelector('.visit-spend-field');
+    if(v.paidFor){own.value='0.00';own.disabled=true;v.spend=0}else{if(own.disabled){own.disabled=false;own.value=''}v.spend=readMoneyInput(own)}
+    const text=row.querySelector('.visit-row-index small');if(text)text.textContent=v.date?'Dated memory':'Date unknown';
+  };
+  $("editorVisitRows").addEventListener('input',syncEditorVisit);
+  $("editorVisitRows").addEventListener('change',syncEditorVisit);
+  $("editorVisitRows").addEventListener("click",event=>{const btn=event.target.closest("[data-remove-editor-visit]");if(!btn)return;workingVisits=workingVisits.filter(v=>v.id!==btn.dataset.removeEditorVisit);renderEditorVisits()});
+
+// Restaurant location search is intentionally manual. Older stored identifiers remain inert for backup compatibility.
+  $("photos").onchange=async ev=>{await addImageFiles(ev.target.files);ev.target.value=""};
+  $("locationImage").onchange=async ev=>{if(ev.target.files?.[0]) await addLocationImageFile(ev.target.files[0]);ev.target.value=""};
+  $("clearLocationImage").onclick=()=>setLocationImagePreview("",true);
+  $("location").addEventListener("input",refreshLocationImagePreview);
+  for(const [zone,kind] of [['locationPasteZone','location'],['pasteZone','restaurant']]){
+    const el=$(zone);el.addEventListener('click',()=>{editorPasteTarget=kind;el.focus()});el.addEventListener('focus',()=>{editorPasteTarget=kind});
+  }
+  $("appearanceBtn").onclick=ev=>{ev.stopPropagation();const m=$("appearanceMenu");m.classList.toggle("show");$("appearanceBtn").setAttribute("aria-expanded",m.classList.contains("show")?"true":"false");renderThemeJourney()};
+  $("modeToggle").onclick=toggleMode;
+  document.querySelectorAll("[data-palette]").forEach(b=>b.onclick=()=>setPalette(b.dataset.palette));
+  bindGraphZoom();$("graphX").onchange=()=>{resetGraphZoom();renderGraph(filtered())}; $("graphY").onchange=()=>{resetGraphZoom();renderGraph(filtered())}; $("graphFitMode").onchange=()=>{prefs.graph.fitMode=$("graphFitMode").value;savePrefs();renderGraph(filtered())}; ["graphFilterCuisine","graphFilterLocation","graphFilterRegion","graphFilterMinFood","graphFilterMinOverall"].forEach(id=>$(id).oninput=$(id).onchange=()=>{prefs.graph.filters.cuisine=$("graphFilterCuisine").value;prefs.graph.filters.location=$("graphFilterLocation").value;prefs.graph.filters.region=$("graphFilterRegion").value;prefs.graph.filters.minFood=$("graphFilterMinFood").value;prefs.graph.filters.minOverall=$("graphFilterMinOverall").value;savePrefs();renderGraph(filtered())}); $("clearGraphFilters").onclick=()=>{prefs.graph.filters={...DEFAULT_PREFS.graph.filters};savePrefs();syncControls();renderGraph(filtered())};
+  window.addEventListener("resize",()=>{if(prefs.view==="map")renderMap(filtered()); if(prefs.view==="graph")renderGraph(filtered())});
+  document.addEventListener("paste",async ev=>{
+    if($("dishPhotoDialog").open){
+      const item=[...(ev.clipboardData?.items||[])].find(x=>x.type.startsWith("image/"));
+      if(!item)return;ev.preventDefault();ev.stopPropagation();
+      try{await saveDishPhoto(await imageToData(item.getAsFile()))}catch(err){alert("Dish photo paste failed: "+err.message)}
+      return;
+    }
+    await handleImagePaste(ev);
+  });
+  $("labReset").onclick=()=>{prefs.labWeights={food:60,value:20,service:20};savePrefs();renderLab()};
+  $("labWeightsForm").onsubmit=submitLabWeights;["labFood","labValue","labService"].forEach(id=>$(id).oninput=updateLabValidity);
+  $("dnaTopCount").onchange=()=>{prefs.dnaTopCount=Math.max(1,Math.min(40,Number($("dnaTopCount").value)||8));savePrefs();renderDNA()};
+  document.querySelectorAll('[data-dna-tab]').forEach(btn=>btn.addEventListener('click',()=>setDNATab(btn.dataset.dnaTab)));
+  document.querySelector('.palate-nav')?.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;const options=['code','signature','stamps'];let i=options.indexOf(dnaActiveTab);if(e.key==='Home')i=0;else if(e.key==='End')i=2;else i=(i+(e.key==='ArrowRight'?1:2))%3;setDNATab(options[i],true);e.preventDefault()});
+  const galleryRoot=$('dnaHighlights');
+  galleryRoot.addEventListener('wheel',e=>{if(!e.target.closest('.museum-gallery'))return;const now=Date.now();if(now-galleryWheelTimestamp<340){e.preventDefault();return}const next=signatureGalleryIndex+(e.deltaY>0||e.deltaX>0?1:-1);if(galleryNavigate(next)){galleryWheelTimestamp=now;e.preventDefault()}},{passive:false});
+  galleryRoot.addEventListener('keydown',e=>{if(!e.target.closest('.museum-gallery'))return;if(e.key==='ArrowRight'||e.key==='ArrowDown'){if(galleryNavigate(signatureGalleryIndex+1))e.preventDefault()}else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){if(galleryNavigate(signatureGalleryIndex-1))e.preventDefault()}});
+  galleryRoot.addEventListener('touchstart',e=>{galleryTouchX=e.touches?.[0]?.clientX??null},{passive:true});
+  galleryRoot.addEventListener('touchend',e=>{if(galleryTouchX===null)return;const delta=(e.changedTouches?.[0]?.clientX??galleryTouchX)-galleryTouchX;galleryTouchX=null;if(Math.abs(delta)>55)galleryNavigate(signatureGalleryIndex+(delta<0?1:-1))},{passive:true});
+  $("dishSearch").oninput=renderDishes;$("dishSort").onchange=renderDishes;$("dishCategoryFilter").onchange=renderDishes;$("dishRarityFilter").onchange=renderDishes;
+  $("dishAddBtn").onclick=()=>startAddDish();
+  $("search").oninput=render;document.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>$(b.dataset.close).close());
+  document.body.onclick=ev=>{
+    const deleteCat=ev.target.closest('[data-delete-dish-category]');if(deleteCat){deleteDishCategory(deleteCat.dataset.deleteDishCategory);return}
+    const openBook=ev.target.closest('[data-open-dish-book]');if(openBook){openDishBook(openBook.dataset.openDishBook);return}
+    const dishPhoto=ev.target.closest('[data-dish-photo]');if(dishPhoto){openDishPhotoDialog(dishPhoto.dataset.dishPhoto,Number(dishPhoto.dataset.dishIndex));return}
+    const pickPhoto=ev.target.closest('[data-pick-dish-photo]');if(pickPhoto&&dishPhotoContext){const e=entries.find(x=>x.id===dishPhotoContext.restaurantId);saveDishPhoto(e?.photos?.[Number(pickPhoto.dataset.pickDishPhoto)]||'');return}
+    const dishCat=ev.target.closest("[data-edit-dish-categories]");if(dishCat){openDishCategoryDialog(dishCat.dataset.editDishCategories,Number(dishCat.dataset.dishIndex));return}
+    const labreset=ev.target.closest("[data-lab-reset]");if(labreset){prefs.labWeights={food:60,value:20,service:20};savePrefs();renderLab();return}
+
+    const rarityChip=ev.target.closest('[data-choose-dish-rarity]');if(rarityChip){$('dishRarityFilter').value=rarityChip.dataset.chooseDishRarity;renderDishes();return}
+    const galleryJump=ev.target.closest('[data-gallery-go]');if(galleryJump){galleryNavigate(Number(galleryJump.dataset.galleryGo));return}
+    const galleryShift=ev.target.closest('[data-gallery-shift]');if(galleryShift){galleryNavigate(signatureGalleryIndex+Number(galleryShift.dataset.galleryShift));return}
+    if(ev.target.closest('[data-v44-new-visit]')){openNewVisit();return}
+    const v44Dish=ev.target.closest('[data-v44-add-dish]');if(v44Dish){openEditorForDish(v44Dish.dataset.v44AddDish);return}
+    const logShortcut=ev.target.closest("[data-log-visit]");if(logShortcut){openUnifiedQuickLog(logShortcut.dataset.logVisit);return}
+    const visitPhoto=ev.target.closest('[data-visit-photo]');if(visitPhoto){const record=visits.find(v=>v.id===visitPhoto.dataset.visitPhoto);const src=record?.photos?.[Number(visitPhoto.dataset.index)];if(src)openPhotoLightbox(src);return}
+    const passport=ev.target.closest("[data-open-passport]");if(passport){renderPassport(passport.dataset.openPassport);return}
+    const ed=ev.target.closest("[data-edit]");if(ed){edit(ed.dataset.edit);return}
+    const ph=ev.target.closest("[data-photo]");if(ph){const e=entries.find(x=>x.id===ph.dataset.photo),src=e?.photos?.[Number(ph.dataset.index)];if(src)openPhotoLightbox(src);return}
+    const cover=ev.target.closest('[data-passport-cover]');if(cover){const e=entries.find(x=>x.id===cover.dataset.passportCover);if(e){const src=e.photos?.[0]||getLocationImage(e.location);if(src)openPhotoLightbox(src)}return}
+    const locationPhoto=ev.target.closest('[data-location-photo]');if(locationPhoto){const src=getLocationImage(locationPhoto.dataset.locationPhoto);if(src)openPhotoLightbox(src);return}
+    const gp=ev.target.closest("[data-graph-point]");if(gp){openGraphRestaurant(gp.dataset.graphPoint);return}
+    const gb=ev.target.closest("[data-graph-bar]");if(gb){openGraphGroup(gb.dataset.graphBar);return}
+    const gom=ev.target.closest("[data-open-map]");if(gom){prefs.view="map";mapLocationFocus=gom.dataset.openMap;savePrefs();$("passportDialog").close();applyView();return}
+    const clearGraph=ev.target.closest("[data-clear-graph-filter]");if(clearGraph){prefs.graph.filters[clearGraph.dataset.clearGraphFilter]="";savePrefs();syncControls();renderGraph(filtered());return}
+    const clear=ev.target.closest("[data-clear-filter]");if(clear){prefs.filters[clear.dataset.clearFilter]="";savePrefs();syncControls();render();return}
+    const ls=ev.target.closest("[data-list-select]");if(ls){prefs.activeListId=ls.dataset.listSelect;savePrefs();render();return}
+    const el=ev.target.closest("[data-edit-list]");if(el){openEditList(el.dataset.editList);return}
+    const mv=ev.target.closest("[data-move-list]");if(mv){moveListItem(mv.dataset.moveList,Number(mv.dataset.index),Number(mv.dataset.dir));return}
+    const rm=ev.target.closest("[data-remove-from-list]");if(rm){removeFromList(rm.dataset.removeFromList,rm.dataset.rid);return}
+    const vv=ev.target.closest("[data-edit-visit]");if(vv){openEditVisit(vv.dataset.editVisit);return}
+    const bubble=ev.target.closest("[data-location-bubble]");if(bubble){openLocationBubble(bubble.dataset.locationBubble,bubble);return}
+    if(!ev.target.closest(".menu-wrap"))document.querySelectorAll(".popover").forEach(p=>p.classList.remove("show"))
+  };
+  $("lightboxClose").onclick=()=>$("lightbox").close();
+  $("lightbox").addEventListener('click',event=>{if(event.target===$("lightbox"))$("lightbox").close()});
+  document.addEventListener('click',event=>{
+    const action=event.target.closest('[data-empty-action]');if(!action)return;
+    if(action.dataset.emptyAction==='add-restaurant')$("addBtn").click();
+    else if(action.dataset.emptyAction==='clear-dish-filters'){$("dishSearch").value='';$("dishRarityFilter").value='';$("dishCategoryFilter").value='';renderDishes()}
+    else if(action.dataset.emptyAction==='clear-restaurant-filters'){$("search").value='';prefs.filters=clone(DEFAULT_PREFS.filters);savePrefs();syncControls();render()}
+  });
+  document.addEventListener('keydown',event=>{if(event.key!=='Enter'&&event.key!==' ')return;
+    if(event.target.matches('[data-photo],[data-passport-cover],[data-location-photo]')){event.preventDefault();event.target.click()}
+  });
+  $("filterBtn").onclick=e=>{e.stopPropagation();$("filterMenu").classList.toggle("show");$("sortMenu").classList.remove("show")};$("sortBtn").onclick=e=>{e.stopPropagation();$("sortMenu").classList.toggle("show");$("filterMenu").classList.remove("show")};
+  $("applyFilters").onclick=()=>{prefs.filters={location:$("filterLocation").value,cuisine:$("filterCuisine").value,vibe:$("filterVibe").value,region:$("filterRegion").value,service:$("filterService").value,minScore:$("filterMinScore").value,minValue:$("filterMinValue").value,maxSpend:$("filterMaxSpend").value};savePrefs();$("filterMenu").classList.remove("show");render()};
+  $("clearFilters").onclick=()=>{prefs.filters=clone(DEFAULT_PREFS.filters);savePrefs();syncControls();render()};$("applySort").onclick=()=>{prefs.sortProperty=$("sortProperty").value;prefs.sortDirection=$("sortDirection").value;savePrefs();$("sortMenu").classList.remove("show");render()};
+  document.querySelectorAll("th[data-sort]").forEach(th=>th.onclick=()=>{const p=th.dataset.sort;if(prefs.sortProperty===p)prefs.sortDirection=prefs.sortDirection==="asc"?"desc":"asc";else{prefs.sortProperty=p;prefs.sortDirection=["restaurant","cuisine","location","grandRank"].includes(p)?"asc":"desc"}savePrefs();syncControls();render()});
+  document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{mobileGo(b.dataset.view);document.querySelector(".workspace").scrollTop=0;setMobileSidebarOpen(false)});
+  $("profileForm").onsubmit=e=>{e.preventDefault();const username=$("profileUsername").value.trim();if(!username){$("profileSaveStatus").textContent="Enter a username.";return}const old=profile.username;profile.username=username.slice(0,30);if(saveProfile()){$("profileSaveStatus").textContent="Saved on this device ✓";renderProfile()}else{profile.username=old;$("profileSaveStatus").textContent="Could not save. Check browser storage."}};
+  $("profilePhotoInput").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;$("profileSaveStatus").textContent="Preparing image…";try{await updateProfilePicture(file);$("profileSaveStatus").textContent="Picture saved ✓"}catch(error){$("profileSaveStatus").textContent=error.message}finally{e.target.value=""}};
+  $("profileRemovePhoto").onclick=()=>{const old=profile.photo;profile.photo="";if(saveProfile()){$("profileSaveStatus").textContent="Picture removed";renderProfile()}else{profile.photo=old;$("profileSaveStatus").textContent="Could not save"}};
+  $("newListBtn").onclick=openNewList;$("saveListBtn").onclick=saveList;$("deleteListBtn").onclick=deleteList;
+  $("backToBubbles").onclick=backToBubbleGraph;
+  $("logVisitBtn").onclick=openNewVisit;$("saveVisitBtn").onclick=saveVisit;$("deleteVisitBtn").onclick=deleteVisit;
+  $("visitRestaurantSearch").oninput=()=>{};
+  $("visitPaidFor").onchange=updateVisitTreat;
+  $("prevMonthBtn").onclick=()=>{visitMonthCursor=new Date(visitMonthCursor.getFullYear(),visitMonthCursor.getMonth()-1,1);selectedCalendarDate='';calendarShowingWholeMonth=false;renderVisitHistory()};
+  $("nextMonthBtn").onclick=()=>{visitMonthCursor=new Date(visitMonthCursor.getFullYear(),visitMonthCursor.getMonth()+1,1);selectedCalendarDate='';calendarShowingWholeMonth=false;renderVisitHistory()};
+  $("todayMonthBtn").onclick=()=>{const d=new Date();visitMonthCursor=new Date(d.getFullYear(),d.getMonth(),1);selectedCalendarDate='';calendarShowingWholeMonth=false;renderVisitHistory()};
+  $("exportBtn").onclick=exportBackup;$("importBtn").onclick=()=>$("importFile").click();
+  $('importFile').onchange=async ev=>{
+    const file=ev.target.files?.[0];if(!file)return;
+    try{
+      if(file.size>200*1024*1024)throw new Error('This backup exceeds 200 megabytes. Reduce photo size or split your journal before importing.');
+      pendingImport=validateBackup(JSON.parse(await file.text()));
+      const d=pendingImport;
+      $('importSummary').textContent=`Ready to restore: ${d.entries.length} restaurants, ${d.lists.length} lists, ${d.visits.length} visits, ${d.locations.length} location photos and ${d.drafts.length} drafts.${d.legacy?' Legacy backup: fields not present in the file will be empty on Replace.':''}`;
+      $('recoReplaceConsent').checked=false;updateReplaceConsent();renderV45ImportPreview(d);$('importDialog').showModal();
+    }catch(error){pendingImport=null;alert('Could not validate the Recolleat backup: '+error.message)}
+    finally{ev.target.value=''}
+  };
+  $("cancelImport").onclick=()=>{pendingImport=null;$("importDialog").close()};$("mergeImport").onclick=()=>importData("merge");$("replaceImport").onclick=()=>importData("replace");
+}
+
+
+// Quick Add and draft collection are intentionally separate from rated restaurant records.
+const DRAFT_KEY='recolleat-local-drafts-v1',RECENT_KEY='recolleat-recent-restaurant-ids-v1';
+let editingDraftId=null;
+function readDrafts(){try{const v=JSON.parse(localStorage.getItem(DRAFT_KEY)||'[]');return Array.isArray(v)?v.filter(x=>x&&typeof x.name==='string').slice(0,250):[]}catch{return []}}
+function writeDrafts(d){try{localStorage.setItem(DRAFT_KEY,JSON.stringify(d));return true}catch{notify('Device storage is full; draft was not saved.','error');return false}}
+function draftFromForm(){
+  const items=[...document.querySelectorAll('.item-edit')].map(row=>({name:row.querySelector('.dish-name')?.value.trim()||'',rating:Number(row.querySelector('.dish-rating')?.value||0),categories:normalizeDishCategoryNames(row.querySelector('.dish-categories-input')?.value||''),photo:row.dataset.photo||''})).filter(i=>i.name);
+  const visitRows=[...document.querySelectorAll('#editorVisitRows [data-visit-id]')];
+  // Dates in the draft are taken from the visible editor, even if a change event has not fired.
+  const savedVisits=workingVisits.map(v=>{const row=visitRows.find(x=>x.dataset.visitId===v.id);return {...v,date:row?.querySelector('.visit-date-field')?.value??v.date}});
+  return {id:editingDraftId||uid(),name:$('restaurant').value.trim(),cuisine:$('cuisine').value.trim(),location:$('location').value.trim(),foodScore:Number($('foodScore').value),valueScore:Number($('valueScore').value),service:$('service').value,pp:Number($('pp').value),international:$('international').checked,vibes:[...document.querySelectorAll('.vibe-check input:checked')].map(e=>e.value),items,visits:savedVisits,photos:[...workingPhotos],locationPhoto:locationImageEdited?workingLocationImage:'',notes:$('notes').value.trim(),updatedAt:new Date().toISOString()};
+}
+function upsertDraft(d){if(!d.name){notify('Enter a restaurant name first.','error');return false}const saved=readDrafts();const i=saved.findIndex(x=>x.id===d.id);if(i>=0)saved[i]=d;else saved.unshift(d);if(!writeDrafts(saved))return false;renderDrafts();return true}
+function renderDrafts(){const panel=$('draftsPanel');if(!panel)return;const items=readDrafts();panel.hidden=!items.length;$('draftsCount').textContent=`${items.length} unfinished`;
+  $('draftCards').innerHTML=items.map(d=>`<div class="draft-row"><div><b>${esc(d.name)}</b><small>${esc([d.cuisine,d.location].filter(Boolean).join(' · ')||'Review not completed')}</small></div><div><button type="button" data-open-draft="${esc(d.id)}">Continue</button><button type="button" data-delete-draft="${esc(d.id)}" aria-label="Delete ${esc(d.name)} draft">×</button></div></div>`).join('');}
+function openDraft(id){
+ const d=readDrafts().find(x=>x.id===id);if(!d)return;resetEditor();editingDraftId=d.id;
+ $('restaurant').value=d.name;$('cuisine').value=d.cuisine||'';$('location').value=d.location||'';$('notes').value=d.notes||'';
+ if(Number.isFinite(d.foodScore))setFoodScore(d.foodScore);
+ if(Number.isFinite(d.valueScore))setValueScore(d.valueScore);
+ if(Number.isFinite(d.pp))setPP(d.pp);
+ if(typeof d.service==='string'&&[...$('service').options].some(o=>o.value===d.service))$('service').value=d.service;
+ $('international').checked=!!d.international;
+ document.querySelectorAll('.vibe-check input').forEach(e=>e.checked=(d.vibes||[]).includes(e.value));
+ if(Array.isArray(d.items)&&d.items.length){$('itemsEditor').innerHTML='';d.items.forEach(addItemRow)}
+ if(Array.isArray(d.visits)){workingVisits=d.visits.map(normaliseVisit);renderEditorVisits()}
+ if(Array.isArray(d.photos)){workingPhotos=d.photos.filter(x=>typeof x==='string'&&x.startsWith('data:image/'));photoPreview()}
+ if(typeof d.locationPhoto==='string'&&d.locationPhoto.startsWith('data:image/'))setLocationImagePreview(d.locationPhoto,true);
+ setEditorStep(1);$('editorTitle').textContent='Finish your draft';$('editor').showModal();
+}
+function removeDraft(id){if(!writeDrafts(readDrafts().filter(d=>d.id!==id)))return;renderDrafts();notify('Draft removed.');}
+function openQuickAdd(){editingDraftId=null;$('quickAddForm').reset();$('quickAddDialog').showModal();$('quickName').focus()}
+function quickDraft(){return {id:uid(),name:$('quickName').value.trim(),cuisine:$('quickCuisine').value.trim(),location:$('quickLocation').value.trim(),foodScore:$('quickFood').value===''?null:Number($('quickFood').value),notes:'',updatedAt:new Date().toISOString()}}
+async function publishQuickRestaurant(){
+ const draft=quickDraft(),score=draft.foodScore;
+ if(!draft.name||score===null||!Number.isFinite(score)||score<0||score>100){notify('Enter a restaurant name and a food score from 0 to 100.','error');return}
+ const duplicate=entries.find(e=>similarName(e.restaurant,draft.name)&&locationKey(e.location)===locationKey(draft.location));
+ if(duplicate){notify('That restaurant is already saved. Open it to add another visit.','error');return}
+ const e=normalise({id:uid(),restaurant:draft.name,cuisine:draft.cuisine,location:draft.location,foodScore:score,valueScore:null,service:'Unrated',pp:null,manualVisitCount:1,items:[]});
+ const visit=normaliseVisit({id:uid(),restaurantId:e.id,date:'',spend:null,foodValue:null,note:''});
+ try{await mutateStores([[RESTAURANTS,'put',e],[VISITS,'put',visit]]);entries.push(e);visits.push(visit);$('quickAddDialog').close();render();notify('Food rating saved. Add value and service later for an overall rank.')}
+ catch(error){console.error(error);notify('Could not save. Check storage before retrying.','error')}
+}
+function rememberRestaurant(id){let a=[];try{a=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]')}catch{};a=[id,...a.filter(x=>x!==id)].slice(0,6);try{localStorage.setItem(RECENT_KEY,JSON.stringify(a))}catch{};renderRecents()}
+function renderRecents(){const node=$('recentRestaurantChips');if(!node)return;let ids=[];try{ids=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]')}catch{};const found=ids.map(id=>entries.find(x=>x.id===id)).filter(Boolean).slice(0,4);node.innerHTML=found.length?found.map(e=>`<button type="button" data-open-passport="${esc(e.id)}">${esc(e.restaurant)}</button>`).join(''):'<small>Restaurants you open will appear here.</small>'}
+let editorStep=1;
+function setEditorStep(num){editorStep=Math.max(1,Math.min(3,Number(num)||1));const d=$('editor');d.dataset.step=String(editorStep);
+  d.querySelectorAll('[data-editor-select-step]').forEach(b=>{const on=Number(b.dataset.editorSelectStep)===editorStep;b.classList.toggle('active',on);b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1});
+  d.querySelectorAll('.editor-section:not(.editor-subsection)').forEach(sec=>{const on=Number(sec.dataset.editorStep)===editorStep;sec.hidden=!on;if(on)sec.open=true});
+  $('editorStepLabel').textContent=`Step ${editorStep} of 3`;$('editorPrevStep').disabled=editorStep===1;$('editorNextStep').disabled=editorStep===3;
+  d.querySelectorAll('.editor-subsection').forEach(sec=>{sec.hidden=editorStep!==3});
+  const y=d.querySelector('.dialog-head');if(y)y.scrollIntoView({block:'nearest',behavior:'instant'});
+}
+function notify(message,type='success'){let n=$('appToast');if(!n)return;n.textContent=message;n.dataset.kind=type;n.classList.add('show');clearTimeout(notify.timer);notify.timer=setTimeout(()=>n.classList.remove('show'),2600)}
+
+let mobileVisibleCount=5;
+function renderMobileHome(data,ranks){
+  const count=$('mobileCurrentCount');if(count)count.textContent=`${entries.length} saved`;
+  const result=$('mobileResultCount');if(result)result.textContent=`${data.length} ${data.length===1?'restaurant':'restaurants'}`;
+  $('mobileRestaurantFeed').innerHTML=data.length?data.slice(0,mobileVisibleCount).map(e=>{
+    const photo=e.photos?.[0]||getLocationImage(e.location),score=overallScore(e),r=ranks.get(e.id)||'—';
+    return `<article class="mobile-restaurant"><button class="mobile-photo" type="button" data-open-passport="${esc(e.id)}" aria-label="Open ${esc(e.restaurant)}">${photo?`<img loading="lazy" src="${esc(photo)}" alt="${esc(e.restaurant)}">`:'✦'}<span class="photo-count">#${r}</span></button><div class="mobile-r-copy"><div class="mobile-r-upper"><div style="min-width:0"><h3>${esc(e.restaurant)}</h3><small>${esc(e.cuisine||'Restaurant')} · ${esc(e.location||'No location')}</small></div><span class="mobile-r-score" style="background:${score===null?'#68736d':scoreColor(score)}">${score===null?'—':score}</span></div><div class="mobile-pillrow"><span class="mobile-pill">Food ${e.foodScore}</span><span class="mobile-pill">Value ${e.valueScore===null?'—':Math.round(e.valueScore)}</span><span class="mobile-pill">${ppText(e.pp)}</span></div><div class="mobile-r-actions"><button type="button" data-open-passport="${esc(e.id)}">View passport</button><button type="button" data-log-visit="${esc(e.id)}">Log visit</button></div></div></article>`;
+  }).join(''):`<div class="mobile-empty reco-empty-state"><b>${entries.length?'No restaurants match':'Start your restaurant journal'}</b><p>${entries.length?'Try another search or remove a filter.':'Save your first restaurant and build your own food archive.'}</p><button type="button" data-empty-action="${entries.length?'clear-restaurant-filters':'add-restaurant'}">${entries.length?'Clear search and filters':'Add first restaurant'}</button></div>`;
+  renderDrafts();renderRecents();renderNeedsAttention();renderV41HomeEnhancements();
+  const more=$('mobileShowMoreRestaurants');if(more){more.hidden=mobileVisibleCount>=data.length;more.textContent=`Load ${Math.min(10,Math.max(0,data.length-mobileVisibleCount))} more restaurants`;}
+}
+function renderNeedsAttention(){
+ const panel=$('needsAttention');if(!panel)return;
+ const missingPhoto=entries.filter(e=>!e.photos?.length),unclassified=entries.filter(e=>(e.items||[]).some(item=>!item.category&&!item.categories?.length));
+ const issues=[...missingPhoto.slice(0,3).map(e=>({e,kind:'No cover photo'})),...unclassified.slice(0,3).map(e=>({e,kind:'Uncategorised dishes'}))];
+ const allCount=missingPhoto.length+unclassified.length+readDrafts().length;
+ panel.hidden=allCount===0;
+ $('attentionSummary').textContent=`Collection check · ${allCount} optional improvements`;
+ $('attentionItems').innerHTML=`<p>These are suggestions, not required tasks. Your existing ratings remain valid.</p>${issues.map(x=>`<button type="button" data-open-passport="${esc(x.e.id)}"><b>${esc(x.e.restaurant)}</b><small>${esc(x.kind)}</small></button>`).join('')}${readDrafts().length?`<p>${readDrafts().length} unfinished drafts appear below.</p>`:''}`;
+}
+const MOBILE_SECTIONS={home:['Home','Your journal at a glance'],table:['Collection','Your restaurants and rankings'],cards:['Restaurant Cards','Your visual passport collection'],map:['Places & Memories','Explore your location constellations'],cuisines:['Cuisine Rankings','The cuisines you keep coming back to'],graph:['Grand List Graph','Explore trends and restaurant scores'],lab:['Ranking Laboratory','Experiment with your perfect weights'],dishes:['Dishes','Rankings and signature gallery'],dna:['Dishes','Explore all your dishes'],lists:['Saved Lists','Your personal collections'],visits:['Visit calendar','Your visits, one day at a time'],profile:['My Profile','Your local identity and collection'],help:['Help & FAQs','Guides, tips and common questions'],privacy:['Privacy & Safety','Your data, your choices']};
+function mobileApplyNavigation(v){
+  if(!$('mobileHome'))return;
+  $('mobileHome').style.display=v==='table'?'grid':'none';
+  if(v==='visits')changeCalendarMode(calendarDisplayMode);
+  $('tableView').style.display='none';
+  const labels=MOBILE_SECTIONS[v]||MOBILE_SECTIONS.table;
+  $('mobileSectionTitle').textContent=labels[0];$('mobileSectionSubtitle').textContent=labels[1];
+  $('mobileIntro').hidden=true;
+  document.querySelectorAll('[data-mobile-view]').forEach(b=>{const active=b.dataset.mobileView===v;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+  $('mobileMoreBtn').classList.toggle('active',!['home','table','map','visits'].includes(v));
+  document.querySelector('.stats').style.display=(v==='table'||v==='cards')?'grid':'none';
+  document.querySelector('.controls').style.display=(v==='table'||v==='cards'||v==='graph')?'grid':'none';
+  $('mobileControlMount').style.display=(v==='table'||v==='graph')?'flex':'none';
+  const chips=$('chips');chips.style.display=(v==='table'||v==='cards'||v==='graph')?'flex':'none';
+  if($('recoSearchResultStatus'))$('recoSearchResultStatus').hidden=!['table','cards'].includes(v)||!($('search').value.trim()||Object.values(prefs.filters||{}).some(x=>x!==''&&x!==null&&x!==undefined));
+}
+let recoHandlingHistory=false;
+function mobileGo(view,options={}){
+  if(view==='dna')view='dishes';
+  if(!(view in MOBILE_SECTIONS))view='table';
+  const previous=prefs.view;
+  if(view!==previous&&!options.fromHistory&&!recoHandlingHistory){
+    try{window.history.pushState({recolleatView:view},'',window.location.href)}catch(e){console.warn('Navigation history unavailable',e)}
+  }
+  prefs.view=view;savePrefs();applyView();closeMobileMore();closeDreamHub();
+  window.scrollTo({top:0,behavior:'instant'});
+}
+function initializeRecolleatHistory(){
+  // Restore the previous screen when the user swipes back, presses Back, or uses browser history.
+  if(!history.state?.recolleatView){try{history.replaceState({recolleatView:prefs.view==='dna'?'dishes':(prefs.view||'table')},'',location.href)}catch{}}
+  window.addEventListener('popstate',e=>{
+    recoHandlingHistory=true;
+    // An ordinary earlier browser entry is not replaced with a fake in-app view.
+    const v=e.state?.recolleatView;
+    document.querySelectorAll('dialog[open]').forEach(dialog=>{try{dialog.close()}catch{}});
+    if(v)mobileGo(v,{fromHistory:true});
+    recoHandlingHistory=false;
+  });
+}
+function openDreamHub(){/* Old hub removed in favour of the top tab navigation. */}
+function closeDreamHub(){document.documentElement.classList.remove('dream-hub-open')}
+function updateDreamHub(){/* No hub counters needed in compact navigation. */}
+
+let v41MoreTrigger=null;
+function openMobileMore(){
+  renderBackupStatus();v41MoreTrigger=document.activeElement;
+  const sheet=$('mobileMoreSheet');sheet.scrollTop=0;sheet.inert=false;
+  $('mobileMoreBackdrop').classList.add('open');sheet.classList.add('open');sheet.setAttribute('aria-hidden','false');
+  $('mobileMoreBtn').setAttribute('aria-expanded','true');
+  document.body.style.overflow='hidden';document.documentElement.classList.add('mobile-menu-open');
+  const app=document.querySelector('.app');if(app)app.inert=true;
+  $('mobileMoreClose').focus({preventScroll:true});
+}
+function closeMobileMore(){
+  const sheet=$('mobileMoreSheet');
+  $('mobileMoreBackdrop').classList.remove('open');sheet.classList.remove('open');
+  const app=document.querySelector('.app');if(app)app.inert=false;
+  if(sheet.contains(document.activeElement)){
+    const restore=v41MoreTrigger?.isConnected?v41MoreTrigger:$('mobileMoreBtn');
+    try{restore.focus({preventScroll:true})}catch{}
+  }
+  sheet.inert=true;sheet.setAttribute('aria-hidden','true');
+  $('mobileMoreBtn').setAttribute('aria-expanded','false');
+  document.body.style.overflow='';document.documentElement.classList.remove('mobile-menu-open');
+
+}
+
+async function eraseRecolleatLocalData(){
+  // Do not delete unrelated site data, service workers or offline assets.
+  const acknowledgement=window.prompt('This will permanently erase the Recolleat journal and profile stored in this browser. Export a backup first. Type DELETE to continue:');
+  if(acknowledgement!=='DELETE')return;
+  const answer=window.confirm('Final confirmation: erase all restaurants, dishes, visits, location images, saved lists and your local Recolleat profile on this device?');
+  if(!answer)return;
+  const status=$('privacyStatus');
+  status.textContent='Removing local Recolleat data…';
+  try{
+    if(!db)throw new Error('The local database is unavailable. Nothing was changed.');
+    await mutateStores([RESTAURANTS,LISTS,VISITS,LOCATIONS,MEDIA,SNAPSHOTS].map(name=>[name,'clear']));
+    localStorage.removeItem(PROFILE_KEY);localStorage.removeItem(DRAFT_KEY);localStorage.removeItem(RECENT_KEY);
+    localStorage.removeItem(PREF_KEY);localStorage.removeItem(REWARDS_KEY);localStorage.removeItem(QUICK_LOG_KEY);localStorage.removeItem(BACKUP_MARK_KEY);localStorage.removeItem(BACKUP_FINGERPRINT_KEY);earnedRewardLevels=[];mediaById.clear();mediaBySource.clear();
+    entries=[];lists=[];visits=[];locationMedia=[];profile={username:'',photo:''};
+    prefs=clone(DEFAULT_PREFS);
+    editingId=null;editingListId=null;editingVisitId=null;
+    savePrefs();applyAppearance();render();
+    status.textContent='This browser’s Recolleat journal and local profile were erased. Exports and hosting-provider data are not affected.';
+  }catch(error){status.textContent='Deletion was not completed: '+error.message;console.error(error)}
+}
+
+
+// V39: Dishes gallery tabs and a direct rank jump. No data is altered by switching views.
+let activeDishPanel='hall';
+function setDishPanel(which){
+  activeDishPanel=['signature','categories'].includes(which)?which:'hall';
+  const gallery=$('dnaPanelSignature');
+  if(!gallery)return;
+  const hall=$('dishPanelHall');
+  hall.hidden=activeDishPanel!=='hall';gallery.hidden=activeDishPanel!=='signature';$('dishPanelCategories').hidden=activeDishPanel!=='categories';
+  document.querySelectorAll('[data-dish-panel]').forEach(button=>{
+    const on=button.dataset.dishPanel===activeDishPanel;
+    button.classList.toggle('active',on);button.setAttribute('aria-selected',String(on));button.tabIndex=on?0:-1;
+  });
+  if(activeDishPanel==='signature')renderDNA();
+  if(activeDishPanel==='categories')$('dishCategoriesAccordion').open=true;
+}
+function setupDishPanels(){
+  document.querySelectorAll('[data-dish-panel]').forEach(b=>b.addEventListener('click',()=>setDishPanel(b.dataset.dishPanel)));
+  setDishPanel('hall');
+}
+function jumpToDishRank(event){
+  event.preventDefault();
+  const n=Math.floor(Number($('dishJumpNumber').value));
+  const all=allDishes();
+  if(!Number.isFinite(n)||n<1||n>all.length){notify(`Choose a dish rank from 1 to ${all.length}.`,'error');return}
+  // Restore the global ranking so #n always refers to the original Hall of Flavour, not a filtered subset.
+  $('dishSearch').value='';$('dishCategoryFilter').value='';$('dishRarityFilter').value='';$('dishSort').value='high';
+  $('hallAccordion').open=true;$('hallAccordion').dataset.compact='false';
+  setDishPanel('hall');renderDishes();
+  const target=$('hallOfFlavour').querySelector(`[data-global-dish-rank="${n}"]`);
+  if(target){target.scrollIntoView({block:'center',behavior:'smooth'});target.classList.add('highlight-dish');setTimeout(()=>target.classList.remove('highlight-dish'),1800);notify(`Hall of Flavour rank #${n}`)}
+  else notify('The selected dish could not be displayed.','error');
+}
+
+// Seven-comparison rating helper: bounded adaptive search over prior food scores.
+// Each answer refines an interval; suggestions are never saved without explicit acceptance.
+let foodHelper=null;
+function foodHelperRecency(restaurant){
+  const date=typeof latestVisitDate==='function'?(latestVisitDate(restaurant)||restaurant.dateVisited||restaurant.createdAt):restaurant.dateVisited;
+  const time=Date.parse(date||'');return Number.isFinite(time)?time:0;
+}
+function foodHelperCandidates(){
+  const name=($('restaurant').value||'').trim().toLowerCase();
+  return entries.filter(e=>e.id!==editingId&&e.restaurant?.trim().toLowerCase()!==name&&Number.isFinite(Number(e.foodScore))&&e.foodScore!==null&&e.foodScore!==''&&Number(e.foodScore)>=0&&Number(e.foodScore)<=100)
+    .map(e=>({id:e.id,name:e.restaurant,location:e.location||'',score:Number(e.foodScore),time:foodHelperRecency(e)}));
+}
+function chooseFoodComparator(){
+  const h=foodHelper;
+  if(!h||h.steps>=7)return null;
+  const pool=h.candidates.filter(e=>!h.used.has(e.id)&&!h.usedScores.has(e.score));
+  if(!pool.length)return null;
+  const mid=(h.low+h.high)/2;
+  // Prefer the most informative midpoint comparison, then prefer recent restaurants.
+  const inside=pool.filter(e=>e.score>h.low+0.5&&e.score<h.high-0.5);
+  const choices=inside.length?inside:pool;
+  const maxTime=Math.max(0,...choices.map(e=>e.time));
+  choices.sort((a,b)=>{
+    const cost=x=>Math.abs(x.score-mid)+((maxTime&&x.time)?Math.min(2, (maxTime-x.time)/(1000*60*60*24*365.25)):2.5);
+    return cost(a)-cost(b)||a.name.localeCompare(b.name);
+  });
+  // Once there is no comparator in the remaining interval, questions are no longer informative.
+  if(!inside.length&&h.steps>0)return null;
+  return choices[0];
+}
+function foodHelperSuggestion(){
+  const h=foodHelper;if(!h)return null;
+  const v=h.nearScores.length?((h.low+h.high)/2+h.nearScores.reduce((a,b)=>a+b,0)/h.nearScores.length)/2:(h.low+h.high)/2;
+  return Math.max(0,Math.min(100,Math.round(v)));
+}
+function updateFoodHelperUI(){
+  const h=foodHelper;if(!h)return;
+  const comp=chooseFoodComparator();
+  const suggestion=foodHelperSuggestion();
+  const wide=Math.round(h.high-h.low);
+  $('ratingHelperProgress').textContent=`Comparison ${Math.min(h.steps+1,7)} of up to 7 · Current range: ${Math.ceil(h.low)}–${Math.floor(h.high)} out of 100`;
+  const q=$('ratingHelperQuestion'),out=$('ratingHelperResult'),use=$('ratingHelperUse');
+  if(!comp||h.steps>=7||wide<=4){
+    q.innerHTML='';
+    if(h.steps===0){out.innerHTML='<strong>No comparisons available yet.</strong><p>Add a few previously rated restaurants first. You can always enter your food rating directly.</p>';use.hidden=true;return}
+    out.innerHTML=`<strong>Suggested food rating: ${suggestion}/100</strong><p>${h.steps?`Based on ${h.steps} comparison${h.steps===1?'':'s'}.`:'There were no suitable comparison restaurants.'} Your current plausible range is ${Math.ceil(h.low)}–${Math.floor(h.high)}. This is an adaptive comparison estimate, not a validated forecast of food quality.</p>`;
+    use.hidden=h.steps===0;return;
+  }
+  h.active=comp;
+  out.innerHTML='';use.hidden=true;
+  q.innerHTML=`<div class="rating-helper-question"><h3>${esc(comp.name)}</h3><p>${esc(comp.location||'Previously rated restaurant')} · Your saved food rating: <strong>${comp.score}/100</strong></p><p>Compared with this restaurant, how was the food at the one you're rating now?</p><div class="rating-helper-choices"><button type="button" data-food-answer="higher">Better food</button><button type="button" data-food-answer="equal">About the same</button><button type="button" data-food-answer="lower">Worse food</button></div></div>`;
+  q.querySelectorAll('[data-food-answer]').forEach(b=>b.onclick=()=>answerFoodComparator(b.dataset.foodAnswer));
+}
+function answerFoodComparator(answer){
+  const h=foodHelper;if(!h?.active)return;
+  const c=h.active;h.used.add(c.id);h.usedScores.add(c.score);h.steps++;
+  if(answer==='higher')h.low=Math.max(h.low,c.score+1);
+  if(answer==='lower')h.high=Math.min(h.high,c.score-1);
+  if(answer==='equal'){
+    h.low=Math.max(h.low,c.score-4);h.high=Math.min(h.high,c.score+4);h.nearScores.push(c.score);
+  }
+  if(h.low>h.high){h.low=Math.max(0,c.score-2);h.high=Math.min(100,c.score+2)}
+  h.active=null;updateFoodHelperUI();
+}
+function stopFoodHelper(){
+  if(!foodHelper?.steps){$('foodRatingDialog').close();return}
+  if(foodHelper.steps>=7||!chooseFoodComparator()){$('foodRatingDialog').close();return}
+  foodHelper.steps=7;updateFoodHelperUI();$('ratingHelperStop').textContent='Close';
+  $('ratingHelperStop').onclick=()=>$('foodRatingDialog').close();
+}
+function setupFoodRatingHelper(){
+  $('openFoodRatingHelper').onclick=()=>{
+    foodHelper={low:0,high:100,steps:0,used:new Set(),usedScores:new Set(),nearScores:[],candidates:foodHelperCandidates(),active:null};
+    $('ratingHelperUse').hidden=true;
+    $('ratingHelperStop').textContent='Finish now';
+    $('ratingHelperStop').onclick=stopFoodHelper;
+    $('ratingHelperResult').textContent='';updateFoodHelperUI();
+    $('ratingHelperStop').textContent='Finish now';
+    $('foodRatingDialog').showModal();
+  };
+  $('ratingHelperClose').onclick=()=>$('foodRatingDialog').close();
+  $('ratingHelperStop').onclick=stopFoodHelper;
+  $('ratingHelperUse').onclick=()=>{
+    if(foodHelper?.steps){setFoodScore(foodHelperSuggestion());$('foodRatingDialog').close();notify('Suggested food score applied. You can still adjust it before saving.')} 
+  };
+}
+
+function setupPassportPages(){
+ const root=$('passportContent'); if(!root)return;
+ const choose=page=>{
+  for(const button of root.querySelectorAll('[data-passport-page]')){const on=button.dataset.passportPage===page;button.classList.toggle('active',on);button.setAttribute('aria-selected',String(on));button.tabIndex=on?0:-1}
+  for(const [name,id] of [['ratings','passportRatingsPage'],['journal','passportJournalPage']]){const el=$(id);if(el)el.hidden=name!==page;}
+ };
+ root.addEventListener('click',e=>{const button=e.target.closest('[data-passport-page]');if(button)choose(button.dataset.passportPage)});
+ let startX=0,startY=0;
+ root.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;startX=e.touches[0].clientX;startY=e.touches[0].clientY},{passive:true});
+ root.addEventListener('touchend',e=>{if(!startX)return;const dx=e.changedTouches[0].clientX-startX,dy=e.changedTouches[0].clientY-startY;startX=0;if(Math.abs(dx)<75||Math.abs(dx)<Math.abs(dy)*1.5)return;if(e.target.closest('button,input,select,textarea,a'))return;choose(dx<0?'journal':'ratings')},{passive:true});
+}
+function setupMobile(){
+  setupPassportPages();
+  // Rehome the existing exhibition; keep its element IDs, photos and renderer unchanged.
+  const signaturePanel=$('dnaPanelSignature');
+  if(signaturePanel&&!$('dishesView').contains(signaturePanel)){
+    $('dishesView').appendChild(signaturePanel);
+    signaturePanel.hidden=true;
+  }
+  setupDishPanels();
+  initializeRecolleatHistory();
+  document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>closeDreamHub()));
+  // The Calendar has its own main tab; Wrapped remains one tap away.
+  $('visitCalendarTab').onclick=()=>changeCalendarMode('calendar');
+  $('visitWrappedTab').onclick=()=>changeCalendarMode('wrapped');
+  $('visitWrappedTab').addEventListener('click',()=>renderWrappedStories());
+  for(const id of ['prevMonth','nextMonth','calendarMonthJump','calendarToday']){const el=$(id);if(el)el.addEventListener('change',()=>{wrappedSlide=0;renderWrappedStories()})}
+  $('calendarGrid').addEventListener('click',event=>{
+    const day=event.target.closest('[data-calendar-date]');if(!day)return;
+    selectedCalendarDate=day.dataset.calendarDate;calendarShowingWholeMonth=false;renderVisitHistory();renderWrappedStories();
+  });
+  $('calendarShowMonth').onclick=()=>{calendarShowingWholeMonth=!calendarShowingWholeMonth;renderVisitHistory();renderWrappedStories()};
+  $('recoVisitedMonthSelect').onchange=event=>{const key=event.target.value;if(!/^\d{4}-\d{2}$/.test(key))return;visitMonthCursor=new Date(Number(key.slice(0,4)),Number(key.slice(5,7))-1,1);selectedCalendarDate='';calendarShowingWholeMonth=false;wrappedSlide=0;renderVisitHistory();renderWrappedStories()};
+  $('mobileShowMoreRestaurants').onclick=()=>{mobileVisibleCount+=10;renderMobileHome(filtered(),grandRankMap())};
+  $('toggleDishRanking').onclick=()=>{const a=$('hallAccordion');a.dataset.compact=a.dataset.compact==='true'?'false':'true';renderDishes()};
+  // Keep Table / Graph, Sort and Filter together inside Grand List.
+  const mobileTheme=$('mobileThemeMount');if(mobileTheme&&!mobileTheme.contains($('appearanceWrap')))mobileTheme.appendChild($('appearanceWrap'));
+  const mount=$('mobileControlMount');
+  mount.appendChild($('grandListTools'));
+  document.querySelectorAll('[data-mobile-view]').forEach(b=>b.addEventListener('click',()=>mobileGo(b.dataset.mobileView)));
+  document.querySelectorAll('[data-more-view]').forEach(b=>b.addEventListener('click',()=>mobileGo(b.dataset.moreView)));
+  $('visitView').addEventListener('click',e=>{if(e.target.closest('#prevMonth,#nextMonth,#calendarToday')){wrappedSlide=0;queueMicrotask(renderWrappedStories)}});
+  $('mobileMoreBtn').onclick=openMobileMore;$('mobileMoreClose').onclick=closeMobileMore;$('mobileMoreBackdrop').onclick=closeMobileMore;
+  $('mobileExport').onclick=()=>{closeMobileMore();$('exportBtn').click()};
+  $('mobileImport').onclick=()=>{closeMobileMore();$('importBtn').click()};
+  $('v42VerifyBackup').onclick=()=>$('v42VerifyFile').click();
+  $('v42VerifyFile').onchange=async event=>{
+    const file=event.target.files?.[0];if(!file)return;
+    try{
+      if(file.size>200*1024*1024)throw new Error('File exceeds the 200 megabyte safety limit.');
+      const data=validateBackup(JSON.parse(await file.text()));
+      $('v42BackupStatus').textContent=`Backup structure readable: ${data.entries.length} restaurants, ${data.visits.length} visits, ${data.lists.length} lists and ${data.drafts.length} drafts. Keep the file safe; a test restoration is still advised.`;
+      notify('Backup structure verified. No stored records were changed.');
+    }catch(error){$('v42BackupStatus').textContent='Backup verification failed: '+error.message;notify('Backup file is not valid.','error')}
+    finally{event.target.value=''}
+  };
+  $('privacyExport').onclick=exportBackup;
+  $('privacyErase').onclick=eraseRecolleatLocalData;
+  $('privacyFooterLink').onclick=()=>mobileGo('privacy');
+  // Device-independent dish-photo controls, including browsers without clipboard-image access.
+  const dishPaste=$('dishPhotoPasteZone');
+  if(dishPaste){dishPaste.textContent='Paste a dish photo here, or choose an image from your device';
+  const copyBtn=document.createElement('button');copyBtn.type='button';copyBtn.id='mobileDishClipboard';copyBtn.textContent='Paste image from clipboard';copyBtn.style.cssText='display:block;width:100%;margin:10px 0;padding:12px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:800';
+  dishPaste.insertAdjacentElement('afterend',copyBtn);
+  const fileLabel=document.createElement('label');fileLabel.className='dish-mobile-upload';fileLabel.textContent='Choose a dish photo';
+  const fileInput=document.createElement('input');fileInput.type='file';fileInput.accept='image/*';fileInput.setAttribute('aria-label','Choose a dish photo from your device');
+  fileInput.onchange=async()=>{if(!fileInput.files?.[0])return;try{await saveDishPhoto(await imageToData(fileInput.files[0],1000,.76))}catch(e){alert('Could not add this photo: '+e.message)}finally{fileInput.value=''}};
+  fileLabel.appendChild(fileInput);copyBtn.insertAdjacentElement('afterend',fileLabel);
+  copyBtn.onclick=async()=>{
+    if(!navigator.clipboard?.read){alert('Clipboard image reading is not supported in this browser. Long-press the paste area to paste an image or select an existing restaurant photo.');return}
+    try{const items=await navigator.clipboard.read();for(const item of items){const mime=item.types.find(t=>t.startsWith('image/'));if(mime){await saveDishPhoto(await imageToData(await item.getType(mime)));return}}alert('No image was found in the clipboard. Copy a photo first.')}catch(err){alert('Clipboard permission was denied or unavailable. Long-press the paste area instead. '+err.message)}
+  };
+  }
+  // Service worker updates are managed by setupV47AppUpdates().
+  mobileApplyNavigation(prefs.view||'table');
+}
+
+
+// Monthly Wrapped: compact swipeable story cards; only explicitly dated visit records count.
+let wrappedSlide=0;
+function renderWrappedStories(){
+ const target=$('wrappedReport');if(!target)return;
+ const key=selectedMonthKey(),month=visits.filter(v=>monthKeyFromDate(v.date)===key),restMap=new Map(entries.map(e=>[e.id,e]));
+ const linked=month.map(v=>restMap.get(v.restaurantId)).filter(Boolean),unique=[...new Map(linked.map(e=>[e.id,e])).values()];
+ const paidSummary=sumRecordedMoney(month,'spend'),foodSummary=sumRecordedMoney(month,'foodValue');
+ const treatedCount=month.filter(v=>v.paidFor===true).length;
+ const best=unique.slice().filter(e=>overallScore(e)!==null).sort((a,b)=>overallScore(b)-overallScore(a))[0];
+ const withDishes=month.flatMap(v=>(v.dishes||[]).filter(d=>d.rating!==null&&d.rating!==undefined&&Number.isFinite(Number(d.rating))&&Number(d.rating)>=0&&Number(d.rating)<=10).map(d=>({name:d.name,score:Number(d.rating),restaurant:restMap.get(v.restaurantId)?.restaurant||'Unknown restaurant'}))).sort((a,b)=>b.score-a.score);
+ const cuisines=new Set(unique.map(e=>String(e.cuisine||'').trim()).filter(Boolean));
+ const prevKey=(()=>{const d=new Date(visitMonthCursor.getFullYear(),visitMonthCursor.getMonth()-1,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')})();
+ const prev=visits.filter(v=>monthKeyFromDate(v.date)===prevKey);
+ const cards=[
+  {k:'YOUR MONTH',title:formatMonth(visitMonthCursor),big:String(month.length),copy:`${month.length===1?'Logged visit':'Logged visits'} across ${unique.length} restaurants. Only visits with real dates are counted.`},
+  {k:'HIGHEST RANKED',title:best?best.restaurant:'No scored restaurant',big:best?String(overallScore(best)):'—',copy:best?`${esc(best.cuisine||'Cuisine not set')} · best overall score among this month's visited restaurants.`:'Log a visit with a date to appear here.'},
+  {k:'DISH OF THE MONTH',title:withDishes[0]?.name||'Not recorded',big:withDishes[0]?withDishes[0].score.toFixed(1):'—',copy:withDishes[0]?`Recorded for a visit at ${esc(withDishes[0].restaurant)} this month.`:'No dishes were rated on a specific visit this month. Restaurant-wide dish ratings are not assumed to have been eaten again.'},
+  {k:'CUISINES THIS MONTH',title:`${cuisines.size} cuisines`,big:String(cuisines.size),copy:`${unique.length} unique restaurants appeared in your dated visit history this month.`},
+  {k:'THE LITTLE DETAILS',title:paidSummary.count?`£${paidSummary.total.toFixed(2)} you paid`:'No personal spending recorded',big:prev.length&&month.length?`${month.length-prev.length>=0?'+':''}${month.length-prev.length}`:'—',copy:`Food value: ${foodSummary.count?'£'+foodSummary.total.toFixed(2):'not recorded'} (${foodSummary.count} of ${month.length} visits). ${paidSummary.count} visits include personal payment; ${treatedCount} ${treatedCount===1?'meal was':'meals were'} paid for by someone else. Previous month: ${prev.length} visits.`}
+ ];
+ wrappedSlide=Math.max(0,Math.min(wrappedSlide,cards.length-1));
+ target.innerHTML=`<div class="wrapped-story-shell"><div class="wrapped-story-nav"><span>RECOLLEAT WRAPPED · ${esc(key)}</span><span>${wrappedSlide+1} / ${cards.length}</span></div>
+ <article class="wrapped-story-card" role="group" aria-label="Monthly Wrapped slide ${wrappedSlide+1} of ${cards.length}"><span class="wrapped-story-kicker">${esc(cards[wrappedSlide].k)}</span><h3>${esc(cards[wrappedSlide].title)}</h3><strong>${esc(cards[wrappedSlide].big)}</strong><p>${cards[wrappedSlide].copy}</p></article>
+ <div class="wrapped-story-controls"><button type="button" data-wrapped-step="-1" ${wrappedSlide===0?'disabled':''} aria-label="Previous slide">← Previous</button><div class="wrapped-story-dots">${cards.map((c,i)=>`<button type="button" data-wrapped-to="${i}" class="${i===wrappedSlide?'current':''}" aria-label="Go to slide ${i+1}" aria-current="${i===wrappedSlide?'step':'false'}"></button>`).join('')}</div><button type="button" data-wrapped-step="1" ${wrappedSlide===cards.length-1?'disabled':''} aria-label="Next slide">Next →</button></div></div>`;
+ target.querySelectorAll('[data-wrapped-step]').forEach(b=>b.onclick=()=>{wrappedSlide=Math.max(0,Math.min(cards.length-1,wrappedSlide+Number(b.dataset.wrappedStep)));renderWrappedStories()});
+ target.querySelectorAll('[data-wrapped-to]').forEach(b=>b.onclick=()=>{wrappedSlide=Number(b.dataset.wrappedTo);renderWrappedStories()});
+ const surface=target.querySelector('.wrapped-story-card');let tx=0;
+ surface.ontouchstart=e=>{tx=e.touches[0]?.clientX||0};surface.ontouchend=e=>{const dx=(e.changedTouches[0]?.clientX||0)-tx;if(Math.abs(dx)>55){wrappedSlide=Math.max(0,Math.min(cards.length-1,wrappedSlide+(dx<0?1:-1)));renderWrappedStories()}};
+}
+
+function dismissSplash(){const splash=$('recolleatSplash');if(!splash||splash.classList.contains('is-gone'))return;splash.classList.add('is-gone');setTimeout(()=>splash.remove(),450)}
+$('splashSkip').onclick=dismissSplash;
+// A fallback prevents animation from ever blocking the journal during a storage error.
+setTimeout(dismissSplash,2200);
+
+/* V41: useful return visit/first-run state, without altering existing database formats. */
+function renderV41HomeEnhancements(){
+  const empty=entries.length===0;
+  const welcome=$('v41Welcome'), next=$('v41NextStep');
+  if(!welcome||!next)return;
+  welcome.hidden=!empty;
+  const jumps=document.querySelector('#mobileHome .jump-recents');
+  if(jumps)jumps.hidden=empty;
+  // A new collector should see the first action, not four zero-valued statistics.
+  const stats=document.querySelector('.workspace .stats');
+  const control=document.querySelector('.workspace .controls');
+  const quickTools=$('mobileControlMount');
+  const header=document.querySelector('#mobileHome .mobile-list-header');
+  for(const el of [stats,control,quickTools])if(el)el.hidden=empty;
+  if(empty&&header){header.before(welcome)}
+  else if(jumps)jumps.before(welcome);
+  const filterWords=String($('search')?.value||'').trim();
+  const clear=$('v41ClearSearch');if(clear)clear.hidden=!filterWords;
+  next.hidden=true;
+  if(empty)return;
+  const drafts=readDrafts();
+  const firstDraft=drafts[0];
+  const missingDishes=entries.find(e=>(e.items||[]).length===0);
+  const missingPhoto=entries.find(e=>(e.photos||[]).length===0);
+  let title='',description='',action='',actionLabel='Continue';
+  if(firstDraft){
+    title='Finish '+String(firstDraft.name||'your draft');
+    description='Your unfinished restaurant review is saved locally.';
+    action='draft:'+firstDraft.id;actionLabel='Review draft';
+  }else if(missingDishes && entries.length<=8){
+    title='Add your first dish at '+missingDishes.restaurant;
+    description='A dish rating makes your food journal more personal.';
+    action='passport:'+missingDishes.id;actionLabel='Open restaurant';
+  }else if(missingPhoto&&entries.length<=5){
+    title='Give '+missingPhoto.restaurant+' a cover photo';
+    description='A photo makes your collection easier to recognise.';
+    action='passport:'+missingPhoto.id;actionLabel='Open restaurant';
+  }
+  if(!title)return;
+  $('v41NextTitle').textContent=title;
+  $('v41NextCopy').textContent=description;
+  const button=$('v41NextAction');button.textContent=actionLabel;button.dataset.v41Action=action;
+  next.hidden=false;
+}
+function setupV41Experience(){
+  $('v41StartQuick')?.addEventListener('click',()=>openQuickAdd());
+  $('v41StartFull')?.addEventListener('click',()=>{resetEditor();setEditorStep(1);$('editor').showModal()});
+  $('v41NextAction')?.addEventListener('click',event=>{
+    const value=event.currentTarget.dataset.v41Action||'';
+    if(value.startsWith('draft:'))document.querySelector('[data-open-draft="'+CSS.escape(value.slice(6))+'"]')?.click();
+    else if(value.startsWith('passport:')){const id=value.slice(9),trigger=[...document.querySelectorAll('[data-open-passport]')].find(el=>el.dataset.openPassport===id);if(trigger)trigger.click();else{renderPassport(id);$('passportDialog').showModal()}}
+  });
+  $('v41ClearSearch')?.addEventListener('click',()=>{const input=$('search');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus()});
+  // The bottom menu is a real modal surface: Escape closes it; keyboard focus stays inside.
+  document.addEventListener('keydown',event=>{
+    const sheet=$('mobileMoreSheet');
+    if(!sheet?.classList.contains('open'))return;
+    if(event.key==='Escape'){event.preventDefault();closeMobileMore();return}
+    if(event.key!=='Tab')return;
+    const nodes=[...sheet.querySelectorAll('button:not([disabled]):not([hidden]),a[href],input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+       .filter(el=>el.getClientRects().length&&!el.closest('[hidden]'));
+    if(!nodes.length)return;
+    const first=nodes[0],last=nodes[nodes.length-1];
+    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+  });
+  // Use an obvious, repeatable add action; preserve the original Quick/Full choice.
+  $('addBtn')?.setAttribute('title','Choose Quick Add or Full Review');
+  $('mobileMoreSheet')?.setAttribute('aria-labelledby','v42MoreHeading');
+  // Save operation and data structures remain untouched.
+}
+
+
+// Build 44: useful, low-pressure reasons to return. No accounts, tracking or remote services.
+function v44DatedVisits(){return visits.filter(v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v.date||'')))}
+function v44RecentRestaurants(){
+ const map=new Map(entries.map(e=>[e.id,e]));
+ const ordered=[...v44DatedVisits()].sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+ const found=[],seen=new Set();
+ for(const v of ordered){const e=map.get(v.restaurantId);if(e&&!seen.has(e.id)){seen.add(e.id);found.push({e,label:'Visited '+formatVisitDate(v.date)});if(found.length===2)break}}
+ // Surface one genuinely older, highly rated meal without adding a new Home section.
+ if(entries.length>=5){
+   const cutoff=Date.now()-60*86400000,lastByRestaurant=new Map();
+   for(const v of ordered)if(map.has(v.restaurantId)&&!lastByRestaurant.has(v.restaurantId))lastByRestaurant.set(v.restaurantId,v.date);
+   const candidates=entries.filter(e=>!seen.has(e.id)&&lastByRestaurant.has(e.id)&&Date.parse(lastByRestaurant.get(e.id)+'T12:00:00')<cutoff&&overallScore(e)!==null&&overallScore(e)>=80)
+     .sort((a,b)=>overallScore(b)-overallScore(a)||String(lastByRestaurant.get(a.id)).localeCompare(String(lastByRestaurant.get(b.id))));
+   if(candidates.length){const e=candidates[0];seen.add(e.id);found.push({e,label:'Worth revisiting · '+formatVisitDate(lastByRestaurant.get(e.id))})}
+ }
+ for(const v of ordered){const e=map.get(v.restaurantId);if(e&&!seen.has(e.id)){seen.add(e.id);found.push({e,label:'Visited '+formatVisitDate(v.date)});if(found.length===3)break}}
+ if(found.length===0){
+  const recent=[...entries].sort((a,b)=>String(b.createdAt||b.updatedAt||'').localeCompare(String(a.createdAt||a.updatedAt||'')));
+  for(const e of recent.slice(0,3))found.push({e,label:'Saved restaurant'});
+ }
+ return found;
+}
+function renderV44Pulse(){
+ const pulse=$('recoPulse');if(!pulse)return;
+ const view=prefs.view==='battles'?'table':prefs.view;
+ pulse.hidden=view!=='home';
+ const now=new Date(),month=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+ const monthVisits=v44DatedVisits().filter(v=>monthKeyFromDate(v.date)===month);
+ const dishRows=allDishes().map(d=>({dish:d.item,e:d.e}));
+ const cuisineCount=new Set(entries.map(e=>String(e.cuisine||'').trim().toLowerCase()).filter(Boolean)).size;
+ const spending=sumRecordedMoney(monthVisits,'spend');
+ $('recoPulseHeadline').textContent=entries.length?'Your journal':'Start your food journal';
+ $('recoPulseIntro').textContent='';
+ const metrics=[
+  {label:'Visits this month',number:String(monthVisits.length),hint:'Only visits with dates'},
+  {label:'Rated dishes',number:String(dishRows.length),hint:'Across your restaurants'},
+  {label:'Cuisines explored',number:String(cuisineCount),hint:'From your collection'},
+  {label:'You paid this month',number:spending.count?'£'+spending.total.toFixed(2):'—',hint:spending.count?`${spending.count} of ${monthVisits.length} visits recorded`:'No payments recorded'}
+ ];
+ $('recoPulseMetrics').innerHTML=metrics.map(x=>`<div class="reco-pulse-metric"><span>${esc(x.label)}</span><strong>${esc(x.number)}</strong><small>${esc(x.hint)}</small></div>`).join('');
+ const bestDish=[...dishRows].sort((a,b)=>Number(b.dish.rating)-Number(a.dish.rating))[0];
+ const possible=entries.find(e=>!(e.items||[]).length);
+ const feature=$('recoPulseFeature');
+ if(bestDish){
+  feature.innerHTML=`<summary><span>YOUR HIGHEST-RATED DISH</span><b>${esc(bestDish.dish.name)} · ${Number(bestDish.dish.rating).toFixed(1)}/10</b></summary><div><p>${esc(bestDish.e.restaurant)} · from your own dish ratings.</p><button type="button" data-open-passport="${esc(bestDish.e.id)}">View the restaurant</button></div>`;
+ }else if(possible){
+  feature.innerHTML=`<summary><span>ONE SMALL NEXT STEP</span><b>Capture your first standout dish</b></summary><div><p>Rate an item you ate at ${esc(possible.restaurant)}. Every dish counts.</p><button type="button" data-v44-add-dish="${esc(possible.id)}">Add a dish</button></div>`;
+ }else{
+  feature.innerHTML='<summary><span>YOUR FOOD ARCHIVE</span><b>Keep collecting what matters</b></summary><p>A revisit, dish rating or short note is enough to remember a good meal.</p>';
+ }
+ feature.open=!bestDish;
+ $('recoPulseRecent').innerHTML=v44RecentRestaurants().map(({e,label})=>`<div class="reco-pulse-recent-row"><span><strong>${esc(e.restaurant)}</strong><small>${esc(label)}</small></span><button type="button" data-log-visit="${esc(e.id)}" aria-label="Log another visit at ${esc(e.restaurant)}">Log again</button></div>`).join('');
+ let prepared=null;try{prepared=localStorage.getItem(BACKUP_MARK_KEY)}catch{}
+ const last=Date.parse(prepared||''),days=Number.isFinite(last)?(Date.now()-last)/86400000:Infinity;
+ const themeHome=$('recoThemeHome');if(themeHome)themeHome.hidden=entries.length>=40;
+ const backup=$('recoPulseBackup');backup.hidden=days<30;
+ if(!backup.hidden)$('recoPulseBackupText').textContent=Number.isFinite(days)?'Backup is over 30 days old. Save a fresh copy elsewhere.':'No backup recorded. Save a copy outside this device.';
+}
+function openEditorForDish(id){
+ const e=entries.find(x=>x.id===id);if(!e)return;
+ edit(id);setEditorStep(3);
+ let target=[...$('itemsEditor').querySelectorAll('.item-edit')].find(row=>!row.querySelector('.dish-name')?.value.trim());
+ if(!target){addItemRow({name:'',rating:8,category:''});target=$('itemsEditor').querySelector('.item-edit:last-child')}
+ target?.querySelector('.dish-name')?.focus();
+}
+function updateReplaceConsent(){
+ const hasData=entries.length||visits.length||readDrafts().length;
+ $('recoReplaceConsentWrap').hidden=!hasData;
+ $('recoReplaceConsent').checked=hasData&&$('recoReplaceConsent').checked;
+ $('replaceImport').disabled=!!hasData&&!$('recoReplaceConsent').checked;
+}
+async function v44ProtectStorage(){
+ const button=$('v44ProtectStorage');button.disabled=true;
+ try{
+  if(!navigator.storage?.persisted||!navigator.storage?.persist)throw new Error('This browser does not offer the protected-storage setting.');
+  const already=await navigator.storage.persisted();
+  const allowed=already||await navigator.storage.persist();
+  notify(allowed?'Browser storage protection enabled. Keep external backups too.':'Browser did not grant protected storage. Export backups regularly.',allowed?'success':'error');
+  button.textContent=allowed?'Device storage protected':'Protect device storage';
+ }catch(e){notify(e.message,'error')}
+ finally{button.disabled=false}
+}
+function setupV44(){
+ $('recoPulseLog').addEventListener('click',()=>openUnifiedQuickLog());
+ $('recoPulseAdd').addEventListener('click',openQuickAdd);
+ $('recoPulseExport').addEventListener('click',exportBackup);
+ $('recoThemeHomeOpen').addEventListener('click',()=>{if(window.matchMedia('(max-width:1100px)').matches){openMobileMore()}const btn=$('appearanceBtn'),menu=$('appearanceMenu');if(!menu.classList.contains('show'))btn.click();btn.scrollIntoView({block:'nearest',behavior:'smooth'});btn.focus({preventScroll:true})});
+ $('recoReplaceConsent').addEventListener('change',updateReplaceConsent);
+ $('recoSafetyExport').addEventListener('click',exportBackup);
+ $('v44ProtectStorage').addEventListener('click',v44ProtectStorage);
+}
+
+// Build 45: all experiences below remain local to this browser. No telemetry,
+// account requirement, network service or invented restaurant data.
+const QUICK_LOG_KEY='recolleat-unfinished-quick-meal-v45';
+let v45QuickPhoto='',v45VisitPhotos=[];
+const v45DateToday=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+function v45Number(id,max){const v=$(id).value.trim();if(!v)return null;const n=Number(v);return Number.isFinite(n)&&n>=0&&n<=max?n:null}
+function v45Money(id){const raw=$(id).value.trim();if(raw==='')return null;const value=Number(raw);return Number.isFinite(value)&&value>=0&&value<=10000000?Math.round(value*100)/100:undefined}
+function v45QuickMatched(value){const q=value.trim().toLowerCase();const exact=entries.find(e=>visitDisplayValue(e).trim().toLowerCase()===q);if(exact)return exact;const matches=entries.filter(e=>e.restaurant.trim().toLowerCase()===q);return matches.length===1?matches[0]:null}
+function v45SaveQuickDraft(){
+ if(!$('recoQuickLogDialog').open)return;
+ const fields=['recoQuickRestaurant','recoQuickCuisine','recoQuickDate','recoQuickFood','recoQuickValue','recoQuickPaid','recoQuickTreated','recoQuickDish','recoQuickDishScore','recoQuickNote'];
+ const data={};for(const id of fields)data[id]=$(id).type==='checkbox'?$(id).checked:$(id).value;
+ try{localStorage.setItem(QUICK_LOG_KEY,JSON.stringify(data))}catch(e){console.warn('Quick meal draft not saved',e)}
+}
+function v45ClearQuickDraft(){try{localStorage.removeItem(QUICK_LOG_KEY)}catch{}}
+function v45QuickState(){
+ const match=v45QuickMatched($('recoQuickRestaurant').value);
+ $('recoQuickCuisineWrap').hidden=!!match;
+ $('recoQuickHint').textContent=match?`Adding a new visit to ${match.restaurant}. Its existing overall rating will not be overwritten.`:'New restaurant: enter a food score to save a rated entry. Details can be completed later.';
+ const treated=$('recoQuickTreated').checked,pay=$('recoQuickPaid');
+ if(treated){if(!pay.disabled)pay.dataset.was=pay.value;pay.value='0.00';pay.disabled=true}
+ else{if(pay.disabled)pay.value=pay.dataset.was||'';pay.disabled=false}
+}
+function v45QuickPhotoPreview(){
+ $('recoQuickPhotoPreview').innerHTML=v45QuickPhoto?`<div class="reco-photo-selected"><img src="${esc(v45QuickPhoto)}" alt="Selected meal photograph"><button type="button" id="recoQuickPhotoRemove" aria-label="Remove photograph">Remove</button></div>`:'';
+ $('recoQuickPhotoRemove')?.addEventListener('click',()=>{v45QuickPhoto='';v45QuickPhotoPreview()});
+}
+function openUnifiedQuickLog(id=''){
+ const dialog=$('recoQuickLogDialog');$('recoQuickPaid').disabled=false;delete $('recoQuickPaid').dataset.was;$('recoQuickLogForm').reset();document.querySelector('#recoQuickLogForm .reco-quicklog-extras').open=false;v45QuickPhoto='';v45QuickPhotoPreview();
+ $('recoQuickRestaurants').innerHTML=entries.slice().sort((a,b)=>a.restaurant.localeCompare(b.restaurant)).map(e=>`<option value="${esc(visitDisplayValue(e))}"></option>`).join('');
+ $('recoQuickDate').value=v45DateToday();
+ if(id){const selected=entries.find(e=>e.id===id);if(selected)$('recoQuickRestaurant').value=visitDisplayValue(selected)}
+ else{try{const saved=JSON.parse(localStorage.getItem(QUICK_LOG_KEY)||'null');if(saved&&typeof saved==='object'){
+  for(const [key,value] of Object.entries(saved)){const el=$(key);if(!el)continue;if(el.type==='checkbox')el.checked=!!value;else if(typeof value==='string')el.value=value}
+ }}catch{}}
+ v45QuickState();dialog.showModal();$('recoQuickRestaurant').focus();
+}
+async function v45UploadPhoto(file,callback){
+ if(!file)return;if(!file.type.startsWith('image/')){notify('Choose a photograph.','error');return}
+ if(file.size>18*1024*1024){notify('Choose a photograph under 18 MB.','error');return}
+ try{callback(await imageToData(file,900,.68))}catch(err){notify('The photo could not be processed: '+err.message,'error')}
+}
+async function saveUnifiedQuickLog(ev){
+ ev.preventDefault();if(!db){notify('Journal storage is not available.','error');return}
+ const name=$('recoQuickRestaurant').value.trim(),match=v45QuickMatched(name);
+ if(!name){notify('Enter a restaurant first.','error');return}
+ const rating=v45Number('recoQuickFood',100),dishRating=v45Number('recoQuickDishScore',10),dishName=$('recoQuickDish').value.trim(), foodValue=v45Money('recoQuickValue'),paidFor=$('recoQuickTreated').checked,spend=paidFor?0:v45Money('recoQuickPaid');
+ if(foodValue===undefined||spend===undefined||($('recoQuickFood').value.trim()&&rating===null)||($('recoQuickDishScore').value.trim()&&dishRating===null)){
+  notify('Check your scores and monetary amounts.','error');return;
+ }
+ if(!match&&entries.filter(e=>e.restaurant.trim().toLowerCase()===name.toLowerCase()).length>1){notify('Several branches share this name. Select the full restaurant and location from the suggestions.','error');return}
+ if(!match&&rating===null){notify('New restaurants need one food score. Alternatively use Full restaurant review.','error');$('recoQuickFood').focus();return}
+ const submit=$('recoQuickSave');submit.disabled=true;
+ try{
+  const now=new Date().toISOString(),id=match?.id||uid(),dish=dishName?{id:uid(),name:dishName,rating:dishRating,price:null,categories:[],photo:''}:null;
+  const date=$('recoQuickDate').value,note=$('recoQuickNote').value.trim();
+  const newEntry=match?null:normalise({id,restaurant:name,cuisine:$('recoQuickCuisine').value.trim(),foodScore:rating,valueScore:null,service:'Unrated',pp:null,manualVisitCount:1,items:[],photos:v45QuickPhoto?[v45QuickPhoto]:[],dateVisited:date});
+  const visit=normaliseVisit({id:uid(),restaurantId:id,date,foodRating:rating,foodValue,spend,paidFor,note,dishes:dish?[dish]:[],photos:v45QuickPhoto?[v45QuickPhoto]:[],createdAt:now,updatedAt:now});
+  const update=match?{...match,manualVisitCount:Math.max(Number(match.manualVisitCount)||0,visits.filter(v=>v.restaurantId===id).length+1),updatedAt:now}:newEntry;
+  await mutateStores([[RESTAURANTS,'put',update],[VISITS,'put',visit]]);
+  if(match)entries=entries.map(e=>e.id===id?update:e);else entries.push(newEntry);
+  visits.push(visit);v45ClearQuickDraft();v45QuickPhoto='';$('recoQuickLogDialog').close();
+  rememberRestaurant(id);if(date)visitMonthCursor=new Date(Number(date.slice(0,4)),Number(date.slice(5,7))-1,1);
+  render();notify(match?'Visit added to your restaurant history.':'Your first food-only rating and visit are saved.');
+ }catch(err){console.error('Quick Log',err);notify('Meal not saved. Your inputs are still available.','error')}
+ finally{submit.disabled=false}
+}
+function prepareV45VisitForm(visit){
+ v45VisitPhotos=Array.isArray(visit?.photos)?[...visit.photos]:[];
+ $('recoVisitFoodRating').value=visit?.foodRating??'';
+ const list=$('recoVisitDishes');list.innerHTML='';
+ (visit?.dishes||[]).forEach(v45AddVisitDishRow);
+ v45VisitPhotoPreview();
+}
+function v45AddVisitDishRow(d={}){
+ const id=d.id||uid(),row=document.createElement('div');row.className='reco-visit-dish-row';row.dataset.dishId=id;
+ row.innerHTML=`<label>Dish <input class="reco-vdish-name" value="${esc(d.name||'')}" maxlength="140" placeholder="What did you have?"></label><label>Score /10 <input class="reco-vdish-rating" type="number" step="0.5" min="0" max="10" value="${d.rating===null||d.rating===undefined?'':esc(d.rating)}" placeholder="—"></label><label>Price (£) <input class="reco-vdish-price" type="number" step="0.01" min="0" value="${d.price===null||d.price===undefined?'':esc(d.price)}" placeholder="—"></label><label>Category <input class="reco-vdish-category" value="${esc(d.category||(d.categories||[]).join(', '))}" placeholder="e.g. Pasta"></label><button class="reco-vdish-remove" type="button" aria-label="Remove dish">×</button>`;
+ row.dataset.photo=d.photo||'';row.querySelector('.reco-vdish-remove').onclick=()=>row.remove();
+ $('recoVisitDishes').appendChild(row);
+}
+function v45VisitPhotoPreview(){
+ const wrap=$('recoVisitPhotoPreview');wrap.innerHTML=v45VisitPhotos.map((src,i)=>`<div class="reco-photo-selected"><img src="${esc(src)}" alt="Selected visit photograph ${i+1}"><button type="button" data-delete-visit-photo="${i}">Remove</button></div>`).join('');
+ wrap.querySelectorAll('[data-delete-visit-photo]').forEach(b=>b.onclick=()=>{v45VisitPhotos.splice(Number(b.dataset.deleteVisitPhoto),1);v45VisitPhotoPreview()});
+}
+function collectV45VisitDetails(){
+ const value=$('recoVisitFoodRating').value.trim(),foodRating=value===''?null:v45Number('recoVisitFoodRating',100);
+ if(value&&foodRating===null){notify('Visit food score must be between 0 and 100.','error');return null}
+ const dishes=[];for(const row of $('recoVisitDishes').querySelectorAll('.reco-visit-dish-row')){
+   const name=row.querySelector('.reco-vdish-name').value.trim();if(!name)continue;
+   const scoreInput=row.querySelector('.reco-vdish-rating').value, priceInput=row.querySelector('.reco-vdish-price').value;
+   const rating=scoreInput===''?null:Number(scoreInput),price=priceInput===''?null:Number(priceInput);
+   if((rating!==null&&(!Number.isFinite(rating)||rating<0||rating>10))||(price!==null&&(!Number.isFinite(price)||price<0||price>10000000))){notify('Check dish ratings and prices.','error');return null}
+   const categories=normalizeDishCategoryNames(row.querySelector('.reco-vdish-category').value);
+   dishes.push({id:row.dataset.dishId,name,rating,price,category:categories[0]||'',categories,photo:row.dataset.photo||''});
+ }
+ return {dishes,photos:[...v45VisitPhotos],foodRating};
+}
+function v45MemoryCards(){
+ const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),map=new Map(entries.map(e=>[e.id,e]));
+ return visits.filter(v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v.date||''))).map(v=>{
+  const e=map.get(v.restaurantId),d=new Date(v.date+'T12:00:00');if(!e||!Number.isFinite(d.getTime()))return null;
+  const days=Math.floor((today-d)/86400000);if(days<30)return null;
+  const anniversary=d.getMonth()===today.getMonth()&&d.getDate()===today.getDate();
+  const rich=(v.dishes||[]).length>0||v.note||v.photos?.length;
+  const quality=Number.isFinite(Number(v.foodRating))&&v.foodRating!==null?Number(v.foodRating):Number(e.foodScore)||0;
+  return {v,e,days,anniversary,rich,quality,score:(anniversary?200:0)+(rich?50:0)+Math.min(100,quality)+Math.min(15,days/100)};
+ }).filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,3);
+}
+function renderV45Home(){
+ const journey=$('recoJourney'),feed=$('recoMemoryFeed');if(!journey||!feed)return;
+ const n=entries.length,cuisines=new Set(entries.map(e=>String(e.cuisine||'').trim().toLowerCase()).filter(Boolean)).size,dishCount=allDishes().length;
+ const early=[1,3,5].filter(level=>n>=level).length,active=[1,3,5,10,20,30,40].filter(level=>n>=level||earnedRewardLevels.includes(level));
+ const next=[1,3,5,10,20,30,40].find(level=>!active.includes(level));
+ const title=n<3?'Your first memories are the foundation':n<10?'Your journal is taking shape':n<30?'You have a real food collection':'Your food archive keeps growing';
+ const action=n<3?'Log a meal':n<10?'Add your next meal':'Log another experience';
+ journey.innerHTML=`<div class="reco-journey-top"><div><span class="feature-kicker">YOUR COLLECTION JOURNEY</span><h3>${title}</h3><p>${n} restaurants · ${cuisines} cuisines · ${dishCount} rated dishes. ${next?`${Math.max(0,next-n)} more saved restaurants until your next progress badge.`:'You have reached every collection-size badge.'}</p></div><button type="button" class="primary" data-v45-quicklog>${action}</button></div><div class="reco-journey-badges" aria-label="Your restaurant achievements">${[1,3,5,10,20,30,40].map(l=>`<span class="${active.includes(l)?'earned':'locked'}" title="${l} saved restaurants">${active.includes(l)?'✓':'○'} ${l}</span>`).join('')}</div>`;
+ const memories=v45MemoryCards();const memoryDetails=feed.closest('details');if(memoryDetails)memoryDetails.hidden=!memories.length;
+ feed.innerHTML=memories.length?`<div class="reco-memory-heading"><span class="feature-kicker">FROM YOUR OWN JOURNAL</span><h3>Meals worth remembering</h3></div><div class="reco-memory-grid">${memories.map(({v,e,days,anniversary})=>{const photo=v.photos?.[0]||e.photos?.[0]||'';return `<article class="reco-memory"><div class="reco-memory-photo">${photo?`<img loading="lazy" src="${esc(photo)}" alt="Photograph from your logged meal">`:'<span>✦</span>'}</div><div><small>${anniversary?'ON THIS DATE':'FROM YOUR ARCHIVE'} · ${esc(formatVisitDate(v.date))}</small><h4>${esc(e.restaurant)}</h4><p>${esc(v.note||v.dishes?.map(i=>i.name).join(' · ')||`A visit you logged ${days} days ago.`)}</p><button type="button" data-open-passport="${esc(e.id)}">Open memory</button></div></article>`}).join('')}</div>`:'';
+}
+function renderV45AnnualFinance(){
+ const panel=$('recoFinanceContent'),select=$('recoFinanceYear');if(!panel||!select)return;
+ const years=[...new Set(visits.map(v=>/^\d{4}-\d{2}-\d{2}$/.test(v.date||'')?Number(v.date.slice(0,4)):null).filter(Boolean))].sort((a,b)=>b-a);
+ const today=new Date().getFullYear();if(!years.length)years.push(today);
+ const previous=Number(select.value),selected=years.includes(previous)?previous:years[0];
+ select.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');select.value=String(selected);
+ const rows=visits.filter(v=>String(v.date||'').startsWith(selected+'-'));
+ if(!rows.length){panel.innerHTML='<p class="feature-muted">No dated visits in this year yet. A visit with no prices still counts as a visit, but not as £0 spent.</p>';return}
+ const spend=sumRecordedMoney(rows,'spend'),value=sumRecordedMoney(rows,'foodValue'),treated=rows.filter(v=>v.paidFor).length;
+ const spendAvg=spend.count?spend.total/spend.count:null,perRestaurant=new Map();
+ const map=new Map(entries.map(e=>[e.id,e]));
+ for(const v of rows){const paid=visitMoney(v,'spend');if(paid===null)continue;const old=perRestaurant.get(v.restaurantId)||{total:0,count:0};old.total+=paid;old.count++;perRestaurant.set(v.restaurantId,old)}
+ const leaders=[...perRestaurant].sort((a,b)=>b[1].total-a[1].total).slice(0,3);
+ const months=Array.from({length:12},(_,i)=>{const records=rows.filter(v=>Number(v.date.slice(5,7))===i+1),sp=sumRecordedMoney(records,'spend'),fv=sumRecordedMoney(records,'foodValue');return {month:new Date(selected,i,1).toLocaleDateString('en-GB',{month:'short'}),spent:sp.total,value:fv.total,spendCount:sp.count,valueCount:fv.count}});
+ const ceiling=Math.max(1,...months.map(m=>Math.max(m.spent,m.value)));
+ panel.innerHTML=`<div class="reco-finance-grid"><div><span>Personally paid</span><strong>${spend.count?moneyLabel(spend.total):'—'}</strong><small>${spend.count}/${rows.length} visits recorded</small></div><div><span>Food value</span><strong>${value.count?moneyLabel(value.total):'—'}</strong><small>${value.count}/${rows.length} visits recorded</small></div><div><span>Treated meals</span><strong>${treated}</strong><small>Marked as paid for by someone else</small></div><div><span>Average personal payment</span><strong>${spendAvg===null?'—':moneyLabel(spendAvg)}</strong><small>Per visit with a payment amount</small></div></div><div class="reco-finance-months" role="img" aria-label="Monthly recorded personal spending versus food value">${months.map(m=>`<div class="reco-finance-month"><div class="reco-finance-bars"><span title="Food value: ${m.valueCount?'£'+m.value.toFixed(2):'unknown'}" class="value" style="height:${m.valueCount?Math.max(2,m.value/ceiling*100):0}%"></span><span title="Personally paid: ${m.spendCount?'£'+m.spent.toFixed(2):'unknown'}" class="paid" style="height:${m.spendCount?Math.max(2,m.spent/ceiling*100):0}%"></span></div><small>${m.month}</small></div>`).join('')}</div><p class="reco-finance-legend"><i class="value"></i> Food value <i class="paid"></i> Personal payment · Missing amounts are excluded, never treated as zero.</p>${leaders.length?`<div class="reco-finance-restaurants"><h4>Where you personally spent most</h4>${leaders.map(([id,r])=>`<p><span>${esc(map.get(id)?.restaurant||'Deleted restaurant')}</span><strong>£${r.total.toFixed(2)}</strong></p>`).join('')}</div>`:''}`;
+}
+function buildRecoverySnapshot(label){
+ const payload={app:'Recolleat Local',version:16,entries:entries.map(clone),lists:lists.map(clone),visits:visits.map(clone),locations:locationMedia.map(clone),dishCategories:prefs.dishCategories||[],hiddenDishCategories:prefs.hiddenDishCategories||[],profile:clone(profile),drafts:readDrafts(),earnedThemes:[...earnedRewardLevels]};
+ // Snapshots remain an optional convenience in this browser, NOT an external backup.
+ const chars=JSON.stringify(payload).length;
+ if(chars>9*1024*1024){console.warn('Local snapshot too large; external export is essential');return null}
+ return {id:'most-recent',label,createdAt:new Date().toISOString(),payload};
+}
+function renderV45ImportPreview(data){
+ const box=$('recoImportPreview');if(!box)return;
+ const old=new Map(entries.map(e=>[e.id,e])),overlap=data.entries.filter(e=>old.has(e.id)),changed=overlap.filter(e=>JSON.stringify(e)!==JSON.stringify(old.get(e.id))).length;
+ const photos=data.entries.reduce((n,e)=>n+(e.photos||[]).length+(e.items||[]).filter(i=>i.photo).length,0)+data.visits.reduce((n,v)=>n+(v.photos||[]).length+(v.dishes||[]).filter(i=>i.photo).length,0);
+ const missingLinks=data.visits.filter(v=>!data.entries.some(e=>e.id===v.restaurantId)&&!old.has(v.restaurantId)).length;
+ box.innerHTML=`<strong>Before you restore</strong><p>${data.entries.length} restaurants · ${data.visits.length} visits · ${photos} photographs · ${data.drafts.length} drafts.</p><p><b>Merge:</b> ${overlap.length} restaurant IDs already exist; ${changed} differ and will be compared by last update time. New IDs will be added.</p><p><b>Replace:</b> ${entries.length} current restaurants and ${visits.length} visits will be replaced. Only records inside the backup remain.</p>${missingLinks?`<p class="reco-warning">${missingLinks} visits refer to restaurants not found in this backup. Review before restoring.</p>`:''}<p class="feature-muted">A local recovery point will be attempted before changing your data. Keep a separate downloaded backup.</p>`;
+}
+async function openV45Recovery(){
+ if(!db)return;
+ try{const rows=await allStore(SNAPSHOTS),snap=rows.find(r=>r.id==='most-recent');
+ if(!snap){notify('No local recovery point exists yet. Export a JSON backup regularly.','error');return}
+ pendingImport=validateBackup(snap.payload);
+ $('importSummary').textContent=`Recovery point: ${snap.label}, ${new Date(snap.createdAt).toLocaleString('en-GB')}. Preview the changes below.`;
+ renderV45ImportPreview(pendingImport);$('recoReplaceConsent').checked=false;updateReplaceConsent();$('importDialog').showModal();
+ }catch(error){notify('Recovery point could not be read: '+error.message,'error')}
+}
+function setupV45(){
+ $('recoQuickLogForm').addEventListener('submit',saveUnifiedQuickLog);
+ $('recoQuickRestaurant').addEventListener('input',v45QuickState);
+ $('recoQuickTreated').addEventListener('change',v45QuickState);
+ let autosave;
+ $('recoQuickLogForm').addEventListener('input',()=>{clearTimeout(autosave);autosave=setTimeout(v45SaveQuickDraft,400)});
+ for(const id of ['recoQuickCamera','recoQuickGallery'])$(id).onchange=async ev=>{await v45UploadPhoto(ev.target.files?.[0],src=>{v45QuickPhoto=src;v45QuickPhotoPreview()});ev.target.value=''};
+ $('recoQuickFull').onclick=()=>{const name=$('recoQuickRestaurant').value.trim(),cuisine=$('recoQuickCuisine').value.trim(),score=v45Number('recoQuickFood',100);$('recoQuickLogDialog').close();resetEditor();setEditorStep(1);$('restaurant').value=name;$('cuisine').value=cuisine;if(score!==null)setFoodScore(score);$('editor').showModal()};
+ $('recoVisitAddDish').onclick=()=>v45AddVisitDishRow();
+ for(const id of ['recoVisitCamera','recoVisitPhotoChoose'])$(id).onchange=async ev=>{await v45UploadPhoto(ev.target.files?.[0],src=>{v45VisitPhotos.push(src);v45VisitPhotoPreview()});ev.target.value=''};
+ $('recoEditorCamera').onchange=async ev=>{await addImageFiles(ev.target.files);ev.target.value=''};
+ $('recoRecoveryOpen').onclick=openV45Recovery;
+ $('recoOptimiseMedia').onclick=async()=>{const b=$('recoOptimiseMedia');b.disabled=true;try{const n=await migrateExistingMedia(),pruned=await pruneUnusedMedia();notify(`Photo optimisation complete: ${n} records migrated, ${pruned} unused images removed.`)}catch(err){notify('Photo optimisation could not finish. Original records were retained.','error');console.error(err)}finally{b.disabled=false}};
+ $('recoFinanceYear').onchange=renderV45AnnualFinance;
+ $('recoTableMore').onclick=()=>{visibleTableRows+=150;render()};
+ $('recoCardMore').onclick=()=>{visibleCardRows+=24;render()};
+ document.addEventListener('click',e=>{if(e.target.closest('[data-v45-quicklog]'))openUnifiedQuickLog()});
+ // Keep the original full editor discoverable; new Quick Log replaces only the primary add button.
+ $('v41StartQuick')?.addEventListener('click',e=>{e.stopImmediatePropagation();openUnifiedQuickLog()},true);
+}
+
+function setupV47Accessibility(){
+  document.addEventListener('keydown',event=>{
+    const target=event.target,group=target.closest?.('[role="tablist"]');
+    if(!group||target.getAttribute('role')!=='tab'||!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;
+    const tabs=[...group.querySelectorAll('[role="tab"]')].filter(el=>el.getClientRects().length&&!el.disabled);
+    const index=tabs.indexOf(target);if(index===-1||!tabs.length)return;
+    event.preventDefault();let next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+    const button=tabs[next];button.focus();button.click();
+  });
+  // Avoid keyboard focus disappearing into concealed passport pages.
+  const root=$('passportContent');if(root)root.setAttribute('aria-label','Restaurant passport pages');
+}
+let v47UpdateRequested=false;
+function setupV47AppUpdates(){
+  const notice=$('recoUpdateReady'),button=$('recoUpdateNow'),connection=$('recoConnectionState');
+  if(!notice||!button)return;
+  const setConnection=()=>{if(connection)connection.textContent=navigator.onLine?'Online · Journal saved on this device':'Offline · Existing journal remains available';};
+  setConnection();window.addEventListener('online',setConnection);window.addEventListener('offline',setConnection);
+  if(!('serviceWorker' in navigator)||location.protocol!=='https:')return;
+  const show=registration=>{if(!registration?.waiting||!navigator.serviceWorker.controller)return;notice.hidden=false;
+    button.onclick=()=>{if(document.querySelector('dialog[open]')&&!confirm('A form is open. Leave it and update Recolleat now? Unsaved changes may be lost.'))return;
+      v47UpdateRequested=true;button.disabled=true;button.textContent='Updating…';registration.waiting.postMessage({type:'SKIP_WAITING'});
+    };
+  };
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(v47UpdateRequested)location.reload()});
+  navigator.serviceWorker.register('./service-worker.js').then(registration=>{
+    show(registration);
+    registration.addEventListener('updatefound',()=>{const worker=registration.installing;
+      if(worker)worker.addEventListener('statechange',()=>{if(worker.state==='installed')show(registration)});
+    });
+  }).catch(error=>console.warn('Offline update checking unavailable',error));
+}
+async function start(){
+  try{await openDB();{
+  const media=await allStore(MEDIA);for(const p of media){mediaById.set(p.id,p.src);mediaBySource.set(p.src,p.id)}
+  entries=(await allStore(RESTAURANTS)).map(e=>normalise(hydrateMediaRecord(e)));
+  lists=(await allStore(LISTS)).map(normaliseList);
+  visits=(await allStore(VISITS)).map(v=>normaliseVisit(hydrateMediaRecord(v)));
+  locationMedia=(await allStore(LOCATIONS)).map(r=>normaliseLocationRecord(hydrateMediaRecord(r)));
+  }$("storageStatus").textContent="Local database ready."}catch(err){$("storageStatus").textContent="This browser blocked local database storage. Try a different browser or check its site-storage settings.";$("storageCritical").hidden=false;$("addBtn").disabled=true;console.error(err)}
+  // Move existing rendered models without changing their data identifiers or renderer contracts.
+  for(const [panel,home] of [['dnaPanelCode','profilePersonaHome'],['dnaPanelStamps','profileStampsHome']]){
+    const node=$(panel),target=$(home);node.removeAttribute('data-dna-panel');node.hidden=false;target.appendChild(node);
+  }
+  setDNATab('signature');
+  bind();applyAppearance();applySidebarState();syncControls();setFoodScore(75);setValueScore(70);setPP(25);render();setupMobile();setupV41Experience();setupV44();setupV45();setupV47Accessibility();setupV47AppUpdates();closeDreamHub();renderV41HomeEnhancements();
+  try{localStorage.setItem('recolleat-opened-v43','1')}catch{}
+  dismissSplash();renderBackupStatus();
+  // Media migration is idempotent and never required before an entry can be used.
+  const migrate=()=>migrateExistingMedia().catch(e=>console.warn('Deferred media migration did not finish',e));
+  if('requestIdleCallback' in window)window.requestIdleCallback(migrate,{timeout:8000});else setTimeout(migrate,1800);
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>start(),{once:true});
+}else{start()}
+})();
