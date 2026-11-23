@@ -1,8 +1,17 @@
 .git/
 .wrangler/
-node_modules/
+source/
+tools/
+tests/
 *.zip
 *.md
 *.log
 .assetsignore
-DEPLOY.txt
+# Older deploy artifacts remain in GitHub history but must not be served.
+recolleat-v45.css
+recolleat-v46.css
+recolleat-v47.css
+recolleat-v51.css
+recolleat-v51.js
+recolleat-v52.css
+recolleat-v52.js

@@ -1,31 +1,37 @@
-/* Recolleat Build 51: retain Android installation assets, refresh the offline cache for the new layout. */
-const CACHE='recolleat-mobile-v51';
-const CORE=['./','./index.html','./recolleat-v45.css','./recolleat-v51.js','./recolleat-v46.css','./recolleat-v47.css','./recolleat-v51.css'];
-const OPTIONAL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png','./install-check.html','./recolleat-release.txt'];
+/* Recolleat Build 2 — offline-first, versioned, update-safe. */
+const CACHE='recolleat-mobile-v2';
+const CRITICAL=['./','./index.html','./recolleat-v2.css','./recolleat-v2.js','./manifest.webmanifest','./privacy.html','./terms.html','./icon-192.png','./icon-512.png'];
+const OPTIONAL=['./icon-maskable-512.png','./apple-touch-icon.png','./install-check.html','./recolleat-release.txt'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
- await cache.addAll(CORE);
- await Promise.all(OPTIONAL.map(async path=>{try{await cache.add(path)}catch(error){console.warn('Optional offline asset unavailable',path,error)}}));
+ // Do not install a partial app shell. Failure leaves the old worker active.
+ await cache.addAll(CRITICAL);
+ await Promise.all(OPTIONAL.map(async path=>{try{await cache.add(path)}catch(e){console.warn('Optional cache asset failed',path,e)}}));
 })()));
 self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting()});
 self.addEventListener('activate',event=>event.waitUntil((async()=>{
  const keys=await caches.keys();
- await Promise.all(keys.filter(key=>key.startsWith('recolleat-')&&key!==CACHE).map(key=>caches.delete(key)));
+ await Promise.all(keys.filter(k=>k.startsWith('recolleat-')&&k!==CACHE).map(k=>caches.delete(k)));
  await self.clients.claim();
 })()));
 self.addEventListener('fetch',event=>{
- if(event.request.method!=='GET')return;
- const url=new URL(event.request.url);if(url.origin!==self.location.origin)return;
- const networkFirst=event.request.mode==='navigate'||/\.(?:webmanifest|png|txt)$/.test(url.pathname);
- if(networkFirst){event.respondWith((async()=>{
-  try{const response=await fetch(event.request);
-   if(response.ok){const cache=await caches.open(CACHE);cache.put(event.request,response.clone()).catch(()=>{})}
-   return response;
-  }catch{return await caches.match(event.request)||(event.request.mode==='navigate'?await caches.match('./index.html'):null)||Response.error()}
- })());return}
+ const req=event.request;if(req.method!=='GET')return;
+ const u=new URL(req.url);if(u.origin!==self.location.origin)return;
+ // Files used to create the app are fetched fresh when online. A versioned
+ // cached fallback keeps the installed app available when offline.
+ const appAsset=req.mode==='navigate'||/\.(?:html|js|css|webmanifest|txt)$/.test(u.pathname);
  event.respondWith((async()=>{
-  const cached=await caches.match(event.request);if(cached)return cached;
-  const response=await fetch(event.request);if(response.ok){const cache=await caches.open(CACHE);cache.put(event.request,response.clone()).catch(()=>{})}
-  return response;
+  const cache=await caches.open(CACHE);
+  if(appAsset){
+   try{const response=await fetch(req,{cache:'no-store'});
+    if(response.ok)await cache.put(req,response.clone());
+    return response;
+   }catch{return await cache.match(req)||(req.mode==='navigate'?await cache.match('./index.html'):null)||Response.error()}
+  }
+  const cached=await cache.match(req);if(cached)return cached;
+  try{const response=await fetch(req);
+   if(response.ok)cache.put(req,response.clone()).catch(()=>{});
+   return response;
+  }catch{return Response.error()}
  })());
 });

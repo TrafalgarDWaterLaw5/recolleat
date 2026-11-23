@@ -1,4 +1,3 @@
-Recolleat mobile · Build 51
-23 November 2026
-Combined quality release: Home clarity, 20-day Log Again, completed journey removal, revised value/indulgent trait, yearly Wrapped, receipt review and item selection, singular/plural category deduplication, typography and Android installation preservation.
-Database version: 7 (unchanged). Receipt text recognition uses on-device TextDetector when supported; editable pasted text is the fallback. No cloud sync or accounts.
+Recolleat mobile · Build 2
+Privacy & Safety + Terms of Use · 23 November 2026
+DB schema 7 unchanged · PWA app identity unchanged
