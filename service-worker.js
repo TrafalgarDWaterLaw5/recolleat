@@ -1,7 +1,7 @@
-/* Recolleat Build 3.2 — offline-first, versioned, update-safe. */
-const CACHE='recolleat-mobile-v3-2';
-const CRITICAL=['./','./index.html','./recolleat-v3-2.css','./recolleat-v3-2.js','./manifest.webmanifest','./privacy.html','./terms.html','./icon-192.png','./icon-512.png'];
-const OPTIONAL=['./icon-maskable-512.png','./apple-touch-icon.png','./install-check.html','./recolleat-release.txt'];
+/* Recolleat Build 3.3 — offline-first, versioned, update-safe. */
+const CACHE='recolleat-mobile-v3-3';
+const CRITICAL=['./','./index.html','./recolleat-v3-3.css','./recolleat-v3-3.js','./manifest.webmanifest','./privacy.html','./terms.html','./icon-192.png','./icon-512.png','./icon-192.png?v=3.3','./icon-512.png?v=3.3'];
+const OPTIONAL=['./icon-maskable-512.png','./icon-maskable-512.png?v=3.3','./apple-touch-icon.png','./install-check.html','./recolleat-release.txt'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
  // Do not install a partial app shell. Failure leaves the old worker active.
