@@ -1,6 +1,6 @@
-/* Recolleat Build 3.3 — offline-first, versioned, update-safe. */
-const CACHE='recolleat-mobile-v3-3';
-const CRITICAL=['./','./index.html','./recolleat-v3-3.css','./recolleat-v3-3.js','./manifest.webmanifest','./privacy.html','./terms.html','./icon-192.png','./icon-512.png','./icon-192.png?v=3.3','./icon-512.png?v=3.3'];
+/* Recolleat Build 3.4 — offline-first, versioned, update-safe. */
+const CACHE='recolleat-mobile-v3-4';
+const CRITICAL=['./','./index.html','./recolleat-v3-4.css','./recolleat-v3-4.js','./manifest.webmanifest','./manifest.webmanifest?v=3.4','./privacy.html','./terms.html','./icon-192.png','./icon-512.png','./icon-192.png?v=3.3','./icon-512.png?v=3.3'];
 const OPTIONAL=['./icon-maskable-512.png','./icon-maskable-512.png?v=3.3','./apple-touch-icon.png','./install-check.html','./recolleat-release.txt'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);

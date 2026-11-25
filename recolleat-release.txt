@@ -1,3 +1,3 @@
-Recolleat mobile - Build 3.3
-24 November 2026
-Unified dish record views and duplicate warnings; separate payments; daily memory rotation; centred home metrics; cuisine passports; Hall of Flavour layout; refreshed install icon. Database version remains 7.
+Recolleat mobile | Build 3.4
+25 November 2026
+Local-only fresh UI, photo-led location cards, geometrically centred add icon, local search and external Maps discovery. Database unchanged. No accounts or paid discovery API.

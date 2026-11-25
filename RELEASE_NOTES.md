@@ -1,3 +1,12 @@
+# Build 3.4 — Original local journal
+
+Based on 3.3, not the 4.x social draft. Fresh UI styling and external Maps search copied independently. Location cards replace bubbles on all screens; photo editing uses the same existing local location store. Add icon uses symmetric SVG, with no generated glyph. No schema changes, new account service, Google API calls or journal upload. Existing application identity and icon images retained. Upload all root files, including the new v3-4 CSS/JS files, to the original repository. Export a backup first.
+
+## Verification
+
+Chromium with 94 simulated restaurants: 320, 360, 393, 412, 844 and 1280 px, seven destinations, plus geometry (0 px horizontal and vertical offset), all six palettes in both modes on Home and Places, local search and location photo editing/navigation. Synthetic test photos; no real Android or IndexedDB persistence test. No new backend.
+
+## Previous release
 # Recolleat — Build 3.3
 
 24 November 2026 · Base: supplied Build 3.2. Local IndexedDB database version 7; unchanged app installation identity.
