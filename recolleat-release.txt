@@ -1,3 +1,3 @@
-Recolleat mobile | Build 3.4
+Recolleat mobile | Build 3.5
 25 November 2026
 Local-only fresh UI, photo-led location cards, geometrically centred add icon, local search and external Maps discovery. Database unchanged. No accounts or paid discovery API.
