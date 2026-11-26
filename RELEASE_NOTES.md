@@ -1,3 +1,7 @@
+# Build 3.8
+
+First-run illustrated onboarding (replay in My Profile); three profile sections; consistent system sans typography; swipe adjacent tabs; fixed signature gallery visibility and duplicate calendar log action; legacy backup weight preferences normalised safely with warning if invalid. Fully offline; no friend or account service. 
+
 # Build 3.5 — 25 November 2026
 
 Permanent home metrics, one home add action, service contrast, centered Collection metrics, wider calendar month selector, privacy wording, and separate median price with minimum spread for Palate Code. Price spread threshold is a product heuristic, not a significance test. Database unchanged. Future accounts: personalise greeting using authenticated display name; not implemented yet.
@@ -37,3 +41,18 @@ Chromium with 94 simulated restaurants: 320, 360, 393, 412, 844 and 1280 px, sev
 
 ## Deployment
 Export a JSON backup before replacing files. Extract the ZIP, upload all contents (including .assetsignore) to the existing GitHub repository root, and commit to main. Keep the existing Cloudflare configuration. Check /recolleat-release.txt and accept the app's update prompt when offered. Existing installed icons can refresh later than the app itself; avoid clearing site data or uninstalling merely to refresh the launcher icon.
+
+## Build 3.7 — 26 November 2026
+- Local-only baseline 3.5; approved logo, Profile navigation and paired More tiles.
+- New logo for header, splash, favicon, home-screen icons; same storage schema and local data keys.
+- Profile is one of five mobile tabs; Places and Dishes are equal adjacent tiles.
+- Derived from verified offline 3.5; 3.6 already used for a separate experimental branch. No accounts or social functionality.
+
+
+## Build 3.9 — local journal and profile refresh
+- Original SVG profile banner patterns: Banana Club, Electric Citrus (yellow kiwis), Strawberry Fields, Golden Orchard. Unlocks 10/20/30/40; selection stays on device.
+- Backup warning and status, last restaurant deletion undo (current page session only), independent Places results, undated records excluded from most-recent sort, seasonal January recap, removed permanent yearly finance and Log Again panels, removed stamp chips, larger local profile edit, logo returns Home.
+- Visit mean mode, manual score preserved, explicit branch creation, group mean across branches, searchable ranked/unranked list selection with desktop drag and mobile arrow controls, local wishlist. Save & Review opens detailed editor after saving a single visit.
+- Legal drafts updated; no new paid service, no cloud journal.
+- Offline: no online accounts, social feed or server publishing.
+- Checks: JS syntax and static references; isolated browser rendering and core synthetic tests with mocked persistence. Full hosted browser navigation blocked, no live SQL execution or device acceptance testing. Keep backups and do not release publicly until risk register and legal prerequisites are completed.
