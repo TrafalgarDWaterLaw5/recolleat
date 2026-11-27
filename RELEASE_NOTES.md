@@ -1,3 +1,20 @@
+# Recolleat Beta — Build 3.11
+
+Internal test build; upgrade on the existing site origin. Export your journal before updating. Storage identifiers and existing records are retained.
+
+- Table, Collection, My Profile, Calendar, More; universal journal search via swipe up or Search button.
+- Cleaner More, quick log, profiles, cuisine rankings, list rows and legal footer.
+- Save Meal / Receipt / Deep Dive at top; food score field for detailed visit edits.
+- Collapsible personal lists, searchable picker, insertion position and hold-to-reorder grip (keyboard position fallback).
+- The Bucket List reuses previously saved wishlist data; successful matching meal log removes the saved place.
+- Photo fallback: dish, restaurant, compact placeholder.
+- Home backup panel and Calendar standalone spending panel hidden; exports remain available.
+- Offline edition has no account, friend or shared-list functionality.
+
+Testing: source syntax, archive and isolated browser interactions with simulated storage. No live Supabase or production service worker verification.
+
+## Prior release notes
+
 # Recolleat Beta — Build 3.10 (27 November 2026)
 
 Internal testing only. Export and verify a backup before deployment. Keep the existing website origin and database identifiers.
